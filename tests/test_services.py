@@ -27,9 +27,9 @@ async def test_ingestion_stores_relevant_awards_once(satellite_award: AwardRecor
     assert first.duplicate_count == 0
     assert second.stored_count == 0
     assert second.duplicate_count == 1
-    assert repository.count() == 1
+    assert await repository.count() == 1
 
-    [signal] = repository.list()
+    [signal] = await repository.list()
     assert signal.company_name == "Example Orbital Systems, Inc."
     assert signal.relevance_score == 12
     assert signal.is_startup_candidate is True
@@ -52,6 +52,6 @@ async def test_repository_can_filter_to_startup_candidates(
 
     await service.ingest(start_date=date(2026, 1, 1), end_date=date(2026, 8, 25))
 
-    assert repository.count() == 2
-    candidates = repository.list(startup_candidates_only=True)
+    assert await repository.count() == 2
+    candidates = await repository.list(startup_candidates_only=True)
     assert [signal.company_name for signal in candidates] == ["Example Orbital Systems, Inc."]

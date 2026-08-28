@@ -7,7 +7,7 @@ from typing import Protocol
 from orbital_signal.domain import AwardRecord, CompanySignal, IngestionResult
 from orbital_signal.quality import assess_signal_quality
 from orbital_signal.relevance import assess_space_relevance
-from orbital_signal.repository import InMemorySignalRepository
+from orbital_signal.repository import SignalRepository
 
 
 class AwardSource(Protocol):
@@ -19,7 +19,7 @@ class AwardIngestionService:
         self,
         *,
         source: AwardSource,
-        repository: InMemorySignalRepository,
+        repository: SignalRepository,
     ) -> None:
         self._source = source
         self._repository = repository
@@ -41,7 +41,7 @@ class AwardIngestionService:
                 assessment.matched_terms,
                 assessment.reasons,
             )
-            if self._repository.upsert(signal):
+            if await self._repository.upsert(award, signal):
                 stored_count += 1
 
         return IngestionResult(

@@ -8,14 +8,17 @@ from fastapi import FastAPI, HTTPException, Query
 from orbital_signal import __version__
 from orbital_signal.config import Settings
 from orbital_signal.domain import CompanySignal, IngestionResult
-from orbital_signal.repository import InMemorySignalRepository
+from orbital_signal.repository import (
+    InMemorySignalRepository,
+    SignalRepository,
+)
 from orbital_signal.services import AwardIngestionService
 from orbital_signal.sources.usaspending import USAspendingClient
 
 
-def create_app(*, repository: InMemorySignalRepository | None = None) -> FastAPI:
+def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
     settings = Settings()
-    signal_repository = repository or InMemorySignalRepository()
+    signal_repository = repository if repository is not None else InMemorySignalRepository()
     application = FastAPI(
         title="Orbital Signal API",
         description="Early-warning intelligence for emerging space companies.",
@@ -34,7 +37,7 @@ def create_app(*, repository: InMemorySignalRepository | None = None) -> FastAPI
         limit: int = Query(default=100, ge=1, le=500),
         startup_candidates_only: bool = Query(default=False),
     ) -> list[CompanySignal]:
-        return signal_repository.list(
+        return await signal_repository.list(
             minimum_score=minimum_score,
             limit=limit,
             startup_candidates_only=startup_candidates_only,
