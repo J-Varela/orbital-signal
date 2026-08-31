@@ -1,8 +1,14 @@
 """Signal persistence contracts and in-memory implementation."""
 
+from datetime import date
 from typing import Protocol
+from uuid import uuid4
 
-from orbital_signal.domain import AwardRecord, CompanySignal
+from orbital_signal.domain import (
+    AwardRecord,
+    CompanySignal,
+    IngestionResult,
+)
 
 
 class SignalRepository(Protocol):
@@ -26,6 +32,29 @@ class SignalRepository(Protocol):
 
     async def count(self) -> int:
         """Return the number of stored signals."""
+
+    async def start_ingestion(
+        self,
+        *,
+        source: str,
+        start_date: date,
+        end_date: date,
+    ) -> str:
+        """Create a running ingestion record and return its identifier."""
+
+    async def finish_ingestion(
+        self,
+        run_id: str,
+        result: IngestionResult,
+    ) -> None:
+        """Mark an ingestion run completed with its final counts."""
+
+    async def fail_ingestion(
+        self,
+        run_id: str,
+        error_message: str,
+    ) -> None:
+        """Mark an ingestion run failed with diagnostic evidence."""
 
 
 class InMemorySignalRepository:
@@ -69,3 +98,27 @@ class InMemorySignalRepository:
 
     async def count(self) -> int:
         return len(self._signals)
+
+    async def start_ingestion(
+        self,
+        *,
+        source: str,
+        start_date: date,
+        end_date: date,
+    ) -> str:
+        del source, start_date, end_date
+        return str(uuid4())
+
+    async def finish_ingestion(
+        self,
+        run_id: str,
+        result: IngestionResult,
+    ) -> None:
+        del run_id, result
+
+    async def fail_ingestion(
+        self,
+        run_id: str,
+        error_message: str,
+    ) -> None:
+        del run_id, error_message

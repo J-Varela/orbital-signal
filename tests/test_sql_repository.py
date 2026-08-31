@@ -3,24 +3,24 @@ from datetime import date
 from sqlalchemy import func, select
 
 from orbital_signal.database import (
-    Base,
     build_async_engine,
     build_session_factory,
 )
 from orbital_signal.db_models import (
     Award,
+    Base,
     Company,
     CompanyAlias,
+    IngestionRun,
     Signal,
 )
 from orbital_signal.domain import (
     AwardRecord,
     CompanySignal,
+    IngestionResult,
     OrganizationType,
 )
-from orbital_signal.sql_repository import (
-    SqlAlchemySignalRepository,
-)
+from orbital_signal.sql_repository import SqlAlchemySignalRepository
 
 
 def make_award(
@@ -199,5 +199,67 @@ async def test_repository_filters_and_orders_candidates() -> None:
             "signal-high",
             "signal-low",
         ]
+    finally:
+        await engine.dispose()
+
+
+async def test_repository_records_ingestion_run_lifecycle() -> None:
+    engine = build_async_engine("sqlite+aiosqlite:///:memory:")
+
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        session_factory = build_session_factory(engine)
+        repository = SqlAlchemySignalRepository(session_factory)
+
+        completed_id = await repository.start_ingestion(
+            source="usaspending",
+            start_date=date(2026, 1, 1),
+            end_date=date(2026, 8, 25),
+        )
+        await repository.finish_ingestion(
+            completed_id,
+            IngestionResult(
+                source="usaspending",
+                fetched_count=100,
+                relevant_count=7,
+                stored_count=6,
+                duplicate_count=1,
+            ),
+        )
+
+        failed_id = await repository.start_ingestion(
+            source="usaspending",
+            start_date=date(2026, 8, 26),
+            end_date=date(2026, 8, 27),
+        )
+        await repository.fail_ingestion(
+            failed_id,
+            "upstream timeout",
+        )
+
+        async with session_factory() as session:
+            completed = await session.get(
+                IngestionRun,
+                completed_id,
+            )
+            failed = await session.get(
+                IngestionRun,
+                failed_id,
+            )
+
+        assert completed is not None
+        assert completed.status == "completed"
+        assert completed.fetched_count == 100
+        assert completed.relevant_count == 7
+        assert completed.stored_count == 6
+        assert completed.duplicate_count == 1
+        assert completed.completed_at is not None
+
+        assert failed is not None
+        assert failed.status == "failed"
+        assert failed.error_message == "upstream timeout"
+        assert failed.completed_at is not None
     finally:
         await engine.dispose()

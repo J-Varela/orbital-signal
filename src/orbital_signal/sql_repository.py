@@ -1,7 +1,9 @@
 """Async SQLAlchemy implementation of signal persistence."""
 
 import hashlib
+from datetime import UTC, date, datetime
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +19,16 @@ from orbital_signal.db_models import (
     CompanyAlias as CompanyAliasModel,
 )
 from orbital_signal.db_models import (
+    IngestionRun as IngestionRunModel,
+)
+from orbital_signal.db_models import (
     Signal as SignalModel,
 )
-from orbital_signal.domain import AwardRecord, CompanySignal
+from orbital_signal.domain import (
+    AwardRecord,
+    CompanySignal,
+    IngestionResult,
+)
 
 
 def _normalize_company_name(value: str) -> str:
@@ -113,6 +122,66 @@ class SqlAlchemySignalRepository:
             value = await session.scalar(statement)
 
         return int(value or 0)
+
+    async def start_ingestion(
+        self,
+        *,
+        source: str,
+        start_date: date,
+        end_date: date,
+    ) -> str:
+        run_id = str(uuid4())
+
+        async with self._session_factory.begin() as session:
+            session.add(
+                IngestionRunModel(
+                    id=run_id,
+                    source=source,
+                    status="running",
+                    requested_start_date=start_date,
+                    requested_end_date=end_date,
+                )
+            )
+
+        return run_id
+
+    async def finish_ingestion(
+        self,
+        run_id: str,
+        result: IngestionResult,
+    ) -> None:
+        async with self._session_factory.begin() as session:
+            ingestion_run = await session.get(
+                IngestionRunModel,
+                run_id,
+            )
+            if ingestion_run is None:
+                raise LookupError(f"ingestion run not found: {run_id}")
+
+            ingestion_run.status = "completed"
+            ingestion_run.fetched_count = result.fetched_count
+            ingestion_run.relevant_count = result.relevant_count
+            ingestion_run.stored_count = result.stored_count
+            ingestion_run.duplicate_count = result.duplicate_count
+            ingestion_run.error_message = None
+            ingestion_run.completed_at = datetime.now(UTC)
+
+    async def fail_ingestion(
+        self,
+        run_id: str,
+        error_message: str,
+    ) -> None:
+        async with self._session_factory.begin() as session:
+            ingestion_run = await session.get(
+                IngestionRunModel,
+                run_id,
+            )
+            if ingestion_run is None:
+                raise LookupError(f"ingestion run not found: {run_id}")
+
+            ingestion_run.status = "failed"
+            ingestion_run.error_message = error_message
+            ingestion_run.completed_at = datetime.now(UTC)
 
     @staticmethod
     async def _upsert_company(
