@@ -62,3 +62,21 @@ async def test_client_rejects_invalid_date_range() -> None:
             assert str(exc) == "end_date must be on or after start_date"
         else:
             raise AssertionError("expected ValueError")
+
+
+def test_search_payload_filters_by_action_date() -> None:
+    payload = USAspendingClient._build_payload(
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 25),
+        agencies=("National Aeronautics and Space Administration",),
+        page=1,
+        limit=100,
+    )
+
+    assert payload["filters"]["time_period"] == [
+        {
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-25",
+            "date_type": "action_date",
+        }
+    ]
