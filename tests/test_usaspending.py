@@ -22,8 +22,9 @@ async def test_client_maps_and_paginates_awards() -> None:
                         "Recipient Name": "Example Space Company",
                         "Recipient UEI": "UEI123",
                         "Award Amount": 2_500_000,
-                        "Start Date": "2026-08-01",
-                        "End Date": "2027-08-01",
+                        "Action Date": "2026-08-15",
+                        "Start Date": "2026-09-01",
+                        "End Date": "2027-09-01",
                         "Awarding Agency": "Department of Defense",
                         "Description": "Satellite payload prototype",
                         "generated_internal_id": f"CONT_AWD_{page}",
@@ -45,6 +46,9 @@ async def test_client_maps_and_paginates_awards() -> None:
     assert requested_pages == [1, 2]
     assert [award.source_award_id for award in awards] == ["AWARD-1", "AWARD-2"]
     assert awards[0].recipient_name == "Example Space Company"
+    assert awards[0].action_date == date(2026, 8, 15)
+    assert awards[0].start_date == date(2026, 9, 1)
+    assert awards[0].end_date == date(2027, 9, 1)
     assert str(awards[0].source_url).endswith("CONT_AWD_1")
 
 

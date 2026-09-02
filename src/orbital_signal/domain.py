@@ -19,6 +19,7 @@ class AwardRecord(BaseModel):
     amount: float = Field(ge=0)
     awarding_agency: str
     description: str = ""
+    action_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
     naics_code: str | None = None

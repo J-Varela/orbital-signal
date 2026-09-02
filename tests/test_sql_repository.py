@@ -39,8 +39,9 @@ def make_award(
         amount=amount,
         awarding_agency=("National Aeronautics and Space Administration"),
         description="Lunar spacecraft prototype",
-        start_date=date(2026, 8, 1),
-        end_date=date(2027, 8, 1),
+        action_date=date(2026, 8, 15),
+        start_date=date(2026, 9, 1),
+        end_date=date(2027, 9, 1),
         naics_code="336414",
         psc_code="AR11",
         source_url=(f"https://www.usaspending.gov/award/CONT_AWD_{award_id}"),
@@ -58,7 +59,7 @@ def make_signal(
         signal_id=signal_id,
         company_name=award.recipient_name,
         company_uei=award.recipient_uei,
-        occurred_on=award.start_date,
+        occurred_on=award.action_date or award.start_date,
         amount=award.amount,
         agency=award.awarding_agency,
         summary=award.description,
@@ -116,6 +117,7 @@ async def test_repository_upserts_complete_signal_graph() -> None:
         assert stored.amount == 300_000
         assert stored.relevance_score == 11
         assert stored.is_startup_candidate is True
+        assert stored.occurred_on == date(2026, 8, 15)
 
         async with session_factory() as session:
             counts = {
@@ -124,6 +126,14 @@ async def test_repository_upserts_complete_signal_graph() -> None:
                 "awards": await session.scalar(select(func.count()).select_from(Award)),
                 "signals": await session.scalar(select(func.count()).select_from(Signal)),
             }
+
+            stored_award = await session.scalar(
+                select(Award).where(Award.source_award_id == "AWARD-001")
+            )
+
+        assert stored_award is not None
+        assert stored_award.action_date == date(2026, 8, 15)
+        assert stored_award.award_start_date == date(2026, 9, 1)
 
         assert counts == {
             "companies": 1,
