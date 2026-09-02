@@ -1,5 +1,6 @@
 """Typed adapter for the public USAspending award search API."""
 
+import asyncio
 from datetime import date
 from typing import Any
 from urllib.parse import quote
@@ -9,6 +10,7 @@ import httpx
 from orbital_signal.domain import AwardRecord
 
 SEARCH_PATH = "/api/v2/search/spending_by_award/"
+TRANSACTIONS_PATH = "/api/v2/transactions/"
 CONTRACT_AWARD_TYPE_CODES = ["A", "B", "C", "D"]
 DEFAULT_AGENCIES = (
     "National Aeronautics and Space Administration",
@@ -56,8 +58,11 @@ class USAspendingClient:
                 )
                 response.raise_for_status()
                 payload = response.json()
-                for item in payload.get("results", []):
-                    award = self._map_award(item)
+                page_awards = [self._map_award(item) for item in payload.get("results", [])]
+
+                enriched_awards = await self._enrich_action_dates(page_awards)
+
+                for award in enriched_awards:
                     awards_by_id[award.source_award_id] = award
 
                 page_metadata = payload.get("page_metadata", {})
@@ -99,7 +104,6 @@ class USAspendingClient:
                 "Awarding Agency",
                 "Description",
                 "generated_internal_id",
-                "Action Date",
             ],
             "sort": "Start Date",
             "order": "desc",
@@ -131,5 +135,54 @@ class USAspendingClient:
             start_date=item.get("Start Date"),
             end_date=item.get("End Date"),
             source_url=evidence_url,
-            action_date=item.get("Action Date"),
         )
+
+    async def _fetch_latest_action_date(
+        self,
+        *,
+        generated_internal_id: str | None,
+    ) -> date | None:
+        if not generated_internal_id:
+            return None
+
+        response = await self._client.post(
+            f"{self._base_url}{TRANSACTIONS_PATH}",
+            json={
+                "award_id": generated_internal_id,
+                "page": 1,
+                "limit": 1,
+                "sort": "action_date",
+                "order": "desc",
+            },
+        )
+        response.raise_for_status()
+
+        results = response.json().get("results", [])
+        if not results:
+            return None
+
+        value = results[0].get("action_date")
+        return date.fromisoformat(value) if value else None
+
+    async def _enrich_action_dates(
+        self,
+        awards: list[AwardRecord],
+        *,
+        concurrency: int = 10,
+    ) -> list[AwardRecord]:
+        if concurrency < 1:
+            raise ValueError("concurrency must be at least 1")
+
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def enrich(award: AwardRecord) -> AwardRecord:
+            async with semaphore:
+                action_date = await self._fetch_latest_action_date(
+                    generated_internal_id=award.generated_internal_id,
+                )
+
+            return award.model_copy(
+                update={"action_date": action_date},
+            )
+
+        return list(await asyncio.gather(*(enrich(award) for award in awards)))
