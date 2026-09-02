@@ -5,7 +5,7 @@ from orbital_signal.repository import InMemorySignalRepository
 
 
 def test_health_reports_release_version() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(repository=InMemorySignalRepository()))
 
     response = client.get("/health")
 
@@ -23,7 +23,7 @@ def test_signals_start_empty() -> None:
 
 
 def test_ingestion_rejects_reversed_date_range() -> None:
-    client = TestClient(create_app())
+    client = TestClient(create_app(repository=InMemorySignalRepository()))
 
     response = client.post(
         "/api/v1/ingestions/usaspending",
