@@ -8,11 +8,33 @@ from orbital_signal.sources.usaspending import USAspendingClient
 
 async def test_client_maps_and_paginates_awards() -> None:
     requested_pages: list[int] = []
+    requested_transaction_awards: list[str] = []
 
     async def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
+
+        if request.url.path == "/api/v2/transactions/":
+            requested_transaction_awards.append(body["award_id"])
+
+            assert body["page"] == 1
+            assert body["limit"] == 1
+            assert body["sort"] == "action_date"
+            assert body["order"] == "desc"
+
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "action_date": "2026-08-15",
+                        }
+                    ]
+                },
+            )
+
         page = body["page"]
         requested_pages.append(page)
+
         return httpx.Response(
             200,
             json={
@@ -22,7 +44,6 @@ async def test_client_maps_and_paginates_awards() -> None:
                         "Recipient Name": "Example Space Company",
                         "Recipient UEI": "UEI123",
                         "Award Amount": 2_500_000,
-                        "Action Date": "2026-08-15",
                         "Start Date": "2026-09-01",
                         "End Date": "2027-09-01",
                         "Awarding Agency": "Department of Defense",
@@ -35,8 +56,12 @@ async def test_client_maps_and_paginates_awards() -> None:
         )
 
     transport = httpx.MockTransport(handler)
+
     async with httpx.AsyncClient(transport=transport) as http_client:
-        client = USAspendingClient(http_client, base_url="https://api.usaspending.test")
+        client = USAspendingClient(
+            http_client,
+            base_url="https://api.usaspending.test",
+        )
         awards = await client.search_awards(
             start_date=date(2026, 1, 1),
             end_date=date(2026, 8, 24),
@@ -44,7 +69,17 @@ async def test_client_maps_and_paginates_awards() -> None:
         )
 
     assert requested_pages == [1, 2]
-    assert [award.source_award_id for award in awards] == ["AWARD-1", "AWARD-2"]
+
+    assert requested_transaction_awards == [
+        "CONT_AWD_1",
+        "CONT_AWD_2",
+    ]
+
+    assert [award.source_award_id for award in awards] == [
+        "AWARD-1",
+        "AWARD-2",
+    ]
+
     assert awards[0].recipient_name == "Example Space Company"
     assert awards[0].action_date == date(2026, 8, 15)
     assert awards[0].start_date == date(2026, 9, 1)
@@ -53,9 +88,15 @@ async def test_client_maps_and_paginates_awards() -> None:
 
 
 async def test_client_rejects_invalid_date_range() -> None:
-    transport = httpx.MockTransport(lambda _: httpx.Response(200, json={}))
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(200, json={}),
+    )
+
     async with httpx.AsyncClient(transport=transport) as http_client:
-        client = USAspendingClient(http_client, base_url="https://api.usaspending.test")
+        client = USAspendingClient(
+            http_client,
+            base_url="https://api.usaspending.test",
+        )
 
         try:
             await client.search_awards(
@@ -66,6 +107,25 @@ async def test_client_rejects_invalid_date_range() -> None:
             assert str(exc) == "end_date must be on or after start_date"
         else:
             raise AssertionError("expected ValueError")
+
+
+async def test_latest_action_date_requires_generated_internal_id() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        raise AssertionError("transaction request should not be sent")
+
+    transport = httpx.MockTransport(handler)
+
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = USAspendingClient(
+            http_client,
+            base_url="https://api.usaspending.test",
+        )
+
+        result = await client._fetch_latest_action_date(
+            generated_internal_id=None,
+        )
+
+    assert result is None
 
 
 def test_search_payload_filters_by_action_date() -> None:
@@ -84,3 +144,22 @@ def test_search_payload_filters_by_action_date() -> None:
             "date_type": "action_date",
         }
     ]
+
+
+async def test_action_date_enrichment_rejects_invalid_concurrency() -> None:
+    transport = httpx.MockTransport(
+        lambda _: httpx.Response(200, json={}),
+    )
+
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = USAspendingClient(
+            http_client,
+            base_url="https://api.usaspending.test",
+        )
+
+        try:
+            await client._enrich_action_dates([], concurrency=0)
+        except ValueError as exc:
+            assert str(exc) == "concurrency must be at least 1"
+        else:
+            raise AssertionError("expected ValueError")
