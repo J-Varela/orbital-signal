@@ -107,7 +107,7 @@ class AwardIngestionService:
             signal_id=signal_id,
             company_name=award.recipient_name,
             company_uei=award.recipient_uei,
-            occurred_on=award.start_date,
+            occurred_on=award.action_date or award.start_date,
             amount=award.amount,
             agency=award.awarding_agency,
             summary=award.description,

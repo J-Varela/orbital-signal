@@ -99,6 +99,7 @@ class USAspendingClient:
                 "Awarding Agency",
                 "Description",
                 "generated_internal_id",
+                "Action Date",
             ],
             "sort": "Start Date",
             "order": "desc",
@@ -130,4 +131,5 @@ class USAspendingClient:
             start_date=item.get("Start Date"),
             end_date=item.get("End Date"),
             source_url=evidence_url,
+            action_date=item.get("Action Date"),
         )

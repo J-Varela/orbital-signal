@@ -165,6 +165,10 @@ class Award(TimestampMixin, Base):
         nullable=False,
     )
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    action_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
     award_start_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,
