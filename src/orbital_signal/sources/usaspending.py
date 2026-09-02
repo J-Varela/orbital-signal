@@ -81,6 +81,7 @@ class USAspendingClient:
                     {
                         "start_date": start_date.isoformat(),
                         "end_date": end_date.isoformat(),
+                        "date_type": "action_date",
                     }
                 ],
                 "award_type_codes": CONTRACT_AWARD_TYPE_CODES,
