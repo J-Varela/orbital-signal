@@ -31,7 +31,7 @@ async def test_ingestion_stores_relevant_awards_once(satellite_award: AwardRecor
 
     [signal] = await repository.list()
     assert signal.company_name == "Example Orbital Systems, Inc."
-    assert signal.relevance_score == 12
+    assert signal.relevance_score == 10
     assert signal.is_startup_candidate is True
 
 

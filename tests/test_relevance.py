@@ -8,7 +8,7 @@ def test_strong_terms_make_award_relevant(satellite_award: AwardRecord) -> None:
     assessment = assess_space_relevance(satellite_award)
 
     assert assessment.is_space_relevant is True
-    assert assessment.score == 12
+    assert assessment.score == 10
     assert assessment.matched_terms == ["payload", "satellite", "space domain awareness"]
 
 
@@ -80,3 +80,62 @@ def test_orbital_welding_does_not_mean_orbital_spaceflight() -> None:
 
     assert assessment.is_space_relevant is False
     assert assessment.score == 0
+
+
+def test_generic_satellite_mention_is_not_high_confidence() -> None:
+    award = AwardRecord(
+        source="usaspending",
+        source_award_id="SAT-001",
+        recipient_name="Generic Contractor",
+        amount=200_000,
+        awarding_agency="Department of Defense",
+        description="General satellite support services.",
+        source_url="https://example.test/SAT-001",
+    )
+
+    assessment = assess_space_relevance(award)
+
+    assert assessment.score < 6
+
+
+def test_lunar_autonomy_scores_above_generic_satellite_support() -> None:
+    generic = AwardRecord(
+        source="usaspending",
+        source_award_id="SAT-001",
+        recipient_name="Generic Contractor",
+        amount=200_000,
+        awarding_agency="Department of Defense",
+        description="General satellite support services.",
+        source_url="https://example.test/SAT-001",
+    )
+
+    advanced = AwardRecord(
+        source="usaspending",
+        source_award_id="LUNAR-001",
+        recipient_name="Advanced Space Systems",
+        amount=2_000_000,
+        awarding_agency="National Aeronautics and Space Administration",
+        description=("Autonomous navigation and guidance system for lunar spacecraft."),
+        source_url="https://example.test/LUNAR-001",
+    )
+
+    generic_score = assess_space_relevance(generic).score
+    advanced_score = assess_space_relevance(advanced).score
+
+    assert advanced_score > generic_score
+
+
+def test_payload_term_alone_is_not_treated_as_strong_space_signal() -> None:
+    award = AwardRecord(
+        source="usaspending",
+        source_award_id="PAYLOAD-001",
+        recipient_name="Example Logistics",
+        amount=50_000,
+        awarding_agency="Department of Defense",
+        description="Payload transport and handling support.",
+        source_url="https://example.test/PAYLOAD-001",
+    )
+
+    assessment = assess_space_relevance(award)
+
+    assert assessment.is_space_relevant is False
