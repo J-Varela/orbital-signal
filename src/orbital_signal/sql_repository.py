@@ -77,6 +77,7 @@ class SqlAlchemySignalRepository:
         self,
         *,
         minimum_score: int = 0,
+        minimum_priority_score: int = 0,
         limit: int = 100,
         startup_candidates_only: bool = False,
     ) -> list[CompanySignal]:
@@ -92,8 +93,10 @@ class SqlAlchemySignalRepository:
             )
             .where(
                 SignalModel.relevance_score >= minimum_score,
+                SignalModel.priority_score >= minimum_priority_score,
             )
             .order_by(
+                SignalModel.priority_score.desc(),
                 SignalModel.relevance_score.desc(),
                 AwardModel.amount.desc(),
             )
@@ -307,6 +310,8 @@ class SqlAlchemySignalRepository:
             "relevance_score": signal.relevance_score,
             "matched_terms": list(signal.matched_terms),
             "reasons": list(signal.reasons),
+            "priority_score": signal.priority_score,
+            "priority_reasons": list(signal.priority_reasons),
             "organization_type": (signal.organization_type.value),
             "is_startup_candidate": (signal.is_startup_candidate),
             "quality_flags": list(signal.quality_flags),
@@ -344,6 +349,8 @@ class SqlAlchemySignalRepository:
             relevance_score=signal.relevance_score,
             matched_terms=list(signal.matched_terms),
             reasons=list(signal.reasons),
+            priority_score=signal.priority_score,
+            priority_reasons=list(signal.priority_reasons),
             organization_type=signal.organization_type,
             is_startup_candidate=(signal.is_startup_candidate),
             quality_flags=list(signal.quality_flags),

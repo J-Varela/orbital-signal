@@ -72,6 +72,8 @@ class CompanySignal(BaseModel):
     agency: str
     summary: str
     relevance_score: int = Field(ge=0, le=100)
+    priority_score: int = Field(default=0, ge=0, le=100)
+    priority_reasons: list[str] = Field(default_factory=list)
     matched_terms: list[str] = Field(default_factory=list)
     reasons: list[str] = Field(default_factory=list)
     organization_type: OrganizationType = OrganizationType.UNKNOWN

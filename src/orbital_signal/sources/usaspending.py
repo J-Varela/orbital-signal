@@ -46,8 +46,8 @@ class USAspendingClient:
         # cannot crowd NASA awards out of the bounded alpha ingestion window.
         for agency in agencies:
             for page in range(1, page_limit + 1):
-                response = await self._client.post(
-                    f"{self._base_url}{SEARCH_PATH}",
+                response = await self._post_with_retry(
+                    SEARCH_PATH,
                     json=self._build_payload(
                         start_date=start_date,
                         end_date=end_date,
@@ -145,8 +145,8 @@ class USAspendingClient:
         if not generated_internal_id:
             return None
 
-        response = await self._client.post(
-            f"{self._base_url}{TRANSACTIONS_PATH}",
+        response = await self._post_with_retry(
+            TRANSACTIONS_PATH,
             json={
                 "award_id": generated_internal_id,
                 "page": 1,
@@ -186,3 +186,35 @@ class USAspendingClient:
             )
 
         return list(await asyncio.gather(*(enrich(award) for award in awards)))
+
+    async def _post_with_retry(
+        self,
+        path: str,
+        *,
+        json: dict[str, Any],
+        attempts: int = 3,
+    ) -> httpx.Response:
+        last_error: httpx.HTTPError | None = None
+
+        for attempt in range(1, attempts + 1):
+            try:
+                response = await self._client.post(
+                    f"{self._base_url}{path}",
+                    json=json,
+                )
+                response.raise_for_status()
+                return response
+
+            except (httpx.ReadTimeout, httpx.ConnectTimeout) as exc:
+                last_error = exc
+
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code not in {429, 500, 502, 503, 504}:
+                    raise
+                last_error = exc
+
+            if attempt < attempts:
+                await asyncio.sleep(2 ** (attempt - 1))
+
+        assert last_error is not None
+        raise last_error

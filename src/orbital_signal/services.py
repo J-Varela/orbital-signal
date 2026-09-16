@@ -9,6 +9,7 @@ from orbital_signal.domain import (
     CompanySignal,
     IngestionResult,
 )
+from orbital_signal.priority import assess_opportunity_priority
 from orbital_signal.quality import assess_signal_quality
 from orbital_signal.relevance import assess_space_relevance
 from orbital_signal.repository import SignalRepository
@@ -103,6 +104,12 @@ class AwardIngestionService:
         stable_key = (f"{award.source}:{award.source_award_id}").encode()
         signal_id = hashlib.sha256(stable_key).hexdigest()[:20]
         quality = assess_signal_quality(award)
+        priority = assess_opportunity_priority(
+            award,
+            relevance_score=score,
+            is_startup_candidate=quality.is_startup_candidate,
+            as_of=date.today(),
+        )
         return CompanySignal(
             signal_id=signal_id,
             company_name=award.recipient_name,
@@ -114,6 +121,8 @@ class AwardIngestionService:
             relevance_score=score,
             matched_terms=matched_terms,
             reasons=reasons,
+            priority_score=priority.score,
+            priority_reasons=priority.reasons,
             organization_type=quality.organization_type,
             is_startup_candidate=(quality.is_startup_candidate),
             quality_flags=quality.quality_flags,

@@ -25,6 +25,7 @@ class SignalRepository(Protocol):
         self,
         *,
         minimum_score: int = 0,
+        minimum_priority_score: int = 0,
         limit: int = 100,
         startup_candidates_only: bool = False,
     ) -> list[CompanySignal]:
@@ -78,6 +79,7 @@ class InMemorySignalRepository:
         self,
         *,
         minimum_score: int = 0,
+        minimum_priority_score: int = 0,
         limit: int = 100,
         startup_candidates_only: bool = False,
     ) -> list[CompanySignal]:
@@ -85,11 +87,13 @@ class InMemorySignalRepository:
             signal
             for signal in self._signals.values()
             if signal.relevance_score >= minimum_score
+            and signal.priority_score >= minimum_priority_score
             and (not startup_candidates_only or signal.is_startup_candidate)
         ]
         return sorted(
             matching,
             key=lambda signal: (
+                signal.priority_score,
                 signal.relevance_score,
                 signal.amount,
             ),
