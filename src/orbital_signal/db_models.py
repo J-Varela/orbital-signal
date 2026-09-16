@@ -210,10 +210,18 @@ class Signal(TimestampMixin, Base):
             "relevance_score BETWEEN 0 AND 100",
             name="relevance_score_range",
         ),
+        CheckConstraint(
+            "priority_score BETWEEN 0 AND 100",
+            name="priority_score_range",
+        ),
         Index(
             "ix_signals_startup_score",
             "is_startup_candidate",
             "relevance_score",
+        ),
+        Index(
+            "ix_signals_priority_score",
+            "priority_score",
         ),
     )
 
@@ -246,6 +254,18 @@ class Signal(TimestampMixin, Base):
         JSON,
         nullable=False,
         default=list,
+    )
+    priority_score: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    priority_reasons: Mapped[list[str]] = mapped_column(
+        JSON,
+        nullable=False,
+        default=list,
+        server_default="[]",
     )
     organization_type: Mapped[str] = mapped_column(
         String(32),

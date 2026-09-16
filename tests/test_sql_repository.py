@@ -54,6 +54,7 @@ def make_signal(
     signal_id: str,
     score: int,
     candidate: bool,
+    priority_score: 73,
 ) -> CompanySignal:
     return CompanySignal(
         signal_id=signal_id,
@@ -66,6 +67,8 @@ def make_signal(
         relevance_score=score,
         matched_terms=["lunar", "spacecraft"],
         reasons=["matched space evidence"],
+        priority_score=priority_score,
+        priority_reasons=["test priority"],
         organization_type=OrganizationType.COMPANY,
         is_startup_candidate=candidate,
         quality_flags=[] if candidate else ["excluded"],
@@ -95,6 +98,7 @@ async def test_repository_upserts_complete_signal_graph() -> None:
             signal_id="signal-001",
             score=11,
             candidate=True,
+            priority_score=73,
         )
 
         assert await repository.upsert(award, signal) is True
@@ -116,6 +120,8 @@ async def test_repository_upserts_complete_signal_graph() -> None:
         assert stored.company_name == "Acme Space, Inc."
         assert stored.amount == 300_000
         assert stored.relevance_score == 11
+        assert stored.priority_score == 73
+        assert stored.priority_reasons == ["test priority"]
         assert stored.is_startup_candidate is True
         assert stored.occurred_on == date(2026, 8, 15)
 
@@ -166,6 +172,7 @@ async def test_repository_filters_and_orders_candidates() -> None:
                 "signal-low",
                 5,
                 True,
+                90,
             ),
             (
                 make_award(
@@ -177,6 +184,7 @@ async def test_repository_filters_and_orders_candidates() -> None:
                 "signal-high",
                 9,
                 True,
+                70,
             ),
             (
                 make_award(
@@ -188,15 +196,17 @@ async def test_repository_filters_and_orders_candidates() -> None:
                 "signal-noise",
                 12,
                 False,
+                99,
             ),
         ]
 
-        for award, signal_id, score, candidate in records:
+        for award, signal_id, score, candidate, priority_score in records:
             signal = make_signal(
                 award,
                 signal_id=signal_id,
                 score=score,
                 candidate=candidate,
+                priority_score=priority_score,
             )
             await repository.upsert(award, signal)
 
@@ -206,8 +216,8 @@ async def test_repository_filters_and_orders_candidates() -> None:
         )
 
         assert [signal.signal_id for signal in candidates] == [
-            "signal-high",
             "signal-low",
+            "signal-high",
         ]
     finally:
         await engine.dispose()

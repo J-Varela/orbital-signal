@@ -163,3 +163,42 @@ async def test_action_date_enrichment_rejects_invalid_concurrency() -> None:
             assert str(exc) == "concurrency must be at least 1"
         else:
             raise AssertionError("expected ValueError")
+
+
+async def test_client_retries_read_timeout() -> None:
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+
+        if attempts == 1:
+            raise httpx.ReadTimeout(
+                "timed out",
+                request=request,
+            )
+
+        return httpx.Response(
+            200,
+            json={
+                "results": [],
+                "page_metadata": {"hasNext": False},
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = USAspendingClient(
+            http_client,
+            base_url="https://api.usaspending.test",
+        )
+
+        awards = await client.search_awards(
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 25),
+            agencies=("National Aeronautics and Space Administration",),
+        )
+
+    assert attempts == 2
+    assert awards == []

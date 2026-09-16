@@ -57,11 +57,13 @@ def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
     @application.get("/api/v1/signals", response_model=list[CompanySignal])
     async def list_signals(
         minimum_score: int = Query(default=4, ge=0, le=100),
+        minimum_priority_score: int = Query(default=0, ge=0, le=100),
         limit: int = Query(default=100, ge=1, le=500),
         startup_candidates_only: bool = Query(default=False),
     ) -> list[CompanySignal]:
         return await signal_repository.list(
             minimum_score=minimum_score,
+            minimum_priority_score=minimum_priority_score,
             limit=limit,
             startup_candidates_only=startup_candidates_only,
         )
