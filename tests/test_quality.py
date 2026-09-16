@@ -72,3 +72,42 @@ def test_tiny_service_modification_is_flagged() -> None:
         "low_dollar_event",
         "administrative_or_training_event",
     ]
+
+
+def test_known_large_prime_is_classified_as_established() -> None:
+    award = make_award(
+        recipient_name="Amentum Technology, Inc.",
+        description="Aerospace testing and facilities operations.",
+        amount=6_000_000,
+    )
+
+    assessment = assess_signal_quality(award)
+
+    assert assessment.is_startup_candidate is False
+    assert "established_contractor" in assessment.quality_flags
+
+
+def test_known_large_aerospace_prime_is_not_startup_candidate() -> None:
+    award = make_award(
+        recipient_name="Lockheed Martin Corporation",
+        description="Satellite payload development.",
+        amount=10_000_000,
+    )
+
+    assessment = assess_signal_quality(award)
+
+    assert assessment.is_startup_candidate is False
+    assert "established_contractor" in assessment.quality_flags
+
+
+def test_unrecognized_technical_company_can_remain_candidate() -> None:
+    award = make_award(
+        recipient_name="Example Orbital Systems, Inc.",
+        description="Autonomous lunar navigation system.",
+        amount=500_000,
+    )
+
+    assessment = assess_signal_quality(award)
+
+    assert assessment.is_startup_candidate is True
+    assert "established_contractor" not in assessment.quality_flags
