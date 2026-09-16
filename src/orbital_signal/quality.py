@@ -39,6 +39,20 @@ ADMINISTRATIVE_OR_SERVICE_PHRASES = (
     "administrative supplies",
 )
 
+ESTABLISHED_CONTRACTOR_PATTERNS = (
+    "amentum",
+    "boeing",
+    "lockheed martin",
+    "northrop grumman",
+    "raytheon",
+    "rtx corporation",
+    "general dynamics",
+    "l3harris",
+    "leidos",
+    "saic",
+    "jacobs",
+)
+
 DEFAULT_MINIMUM_CANDIDATE_AMOUNT = 25_000
 
 
@@ -63,11 +77,15 @@ def assess_signal_quality(
     """Determine whether an event belongs in the startup-candidate view."""
 
     organization_type = classify_organization(award.recipient_name)
+    normalized_name = award.recipient_name.casefold()
     normalized_description = award.description.casefold()
     quality_flags: list[str] = []
 
     if organization_type is not OrganizationType.COMPANY:
         quality_flags.append(f"recipient_type:{organization_type.value}")
+
+    if any(pattern in normalized_name for pattern in ESTABLISHED_CONTRACTOR_PATTERNS):
+        quality_flags.append("established_contractor")
 
     if award.amount < minimum_candidate_amount:
         quality_flags.append("low_dollar_event")

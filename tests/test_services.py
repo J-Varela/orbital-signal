@@ -55,3 +55,32 @@ async def test_repository_can_filter_to_startup_candidates(
     assert await repository.count() == 2
     candidates = await repository.list(startup_candidates_only=True)
     assert [signal.company_name for signal in candidates] == ["Example Orbital Systems, Inc."]
+
+
+async def test_established_contractor_is_not_startup_candidate() -> None:
+    award = AwardRecord(
+        source="usaspending",
+        source_award_id="AMENTUM-001",
+        recipient_name="Amentum Technology, Inc.",
+        amount=6_000_000,
+        awarding_agency="National Aeronautics and Space Administration",
+        description="Aerospace testing and facilities operations.",
+        action_date=date(2026, 8, 20),
+        source_url="https://www.usaspending.gov/award/AMENTUM-001",
+    )
+
+    repository = InMemorySignalRepository()
+    service = AwardIngestionService(
+        source=StubAwardSource([award]),
+        repository=repository,
+    )
+
+    await service.ingest(
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 25),
+    )
+
+    [signal] = await repository.list()
+
+    assert signal.is_startup_candidate is False
+    assert "established_contractor" in signal.quality_flags
