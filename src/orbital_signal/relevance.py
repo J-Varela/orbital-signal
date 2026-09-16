@@ -23,7 +23,6 @@ STRONG_TERMS = (
     WeightedTerm("lunar", 4),
     WeightedTerm("cislunar", 4),
     WeightedTerm("missile warning", 4),
-    WeightedTerm("payload", 4),
 )
 
 SUPPORTING_TERMS = (
@@ -35,6 +34,7 @@ SUPPORTING_TERMS = (
     WeightedTerm("mission control", 2),
     WeightedTerm("hypersonic", 2),
     WeightedTerm("in-space", 2),
+    WeightedTerm("payload", 2),
 )
 
 SPACE_AGENCY_PATTERNS = (
