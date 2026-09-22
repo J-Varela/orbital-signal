@@ -87,6 +87,21 @@ class CompanySignal(BaseModel):
     )
 
 
+class CompanyIntelligenceProfile(BaseModel):
+    """Aggregated intelligence derived from signals tied to one company."""
+
+    company_name: str
+    company_uei: str | None = None
+    signal_count: int = Field(ge=1)
+    total_amount: float = Field(ge=0)
+    agencies: list[str] = Field(default_factory=list)
+    latest_signal_date: date | None = None
+    average_relevance_score: float = Field(ge=0, le=100)
+    max_priority_score: int = Field(ge=0, le=100)
+    startup_candidate: bool
+    established_contractor: bool
+
+
 class IngestionResult(BaseModel):
     """Summary of one source ingestion run."""
 

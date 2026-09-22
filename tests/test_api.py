@@ -78,3 +78,28 @@ def test_signals_accept_priority_filter() -> None:
         "limit": 10,
         "startup_candidates_only": True,
     }
+
+
+def test_companies_start_empty() -> None:
+    client = TestClient(create_app(repository=InMemorySignalRepository()))
+
+    response = client.get("/api/v1/companies")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_companies_accept_profile_filters() -> None:
+    repository = InMemorySignalRepository()
+    client = TestClient(create_app(repository=repository))
+
+    response = client.get(
+        "/api/v1/companies",
+        params={
+            "limit": 10,
+            "startup_candidates_only": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
