@@ -10,7 +10,11 @@ from fastapi import FastAPI, HTTPException, Query
 from orbital_signal import __version__
 from orbital_signal.config import Settings
 from orbital_signal.database import build_async_engine, build_session_factory
-from orbital_signal.domain import CompanySignal, IngestionResult
+from orbital_signal.domain import (
+    CompanyIntelligenceProfile,
+    CompanySignal,
+    IngestionResult,
+)
 from orbital_signal.repository import SignalRepository
 from orbital_signal.services import AwardIngestionService
 from orbital_signal.sources.usaspending import USAspendingClient
@@ -64,6 +68,19 @@ def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
         return await signal_repository.list(
             minimum_score=minimum_score,
             minimum_priority_score=minimum_priority_score,
+            limit=limit,
+            startup_candidates_only=startup_candidates_only,
+        )
+
+    @application.get(
+        "/api/v1/companies",
+        response_model=list[CompanyIntelligenceProfile],
+    )
+    async def list_companies(
+        limit: int = Query(default=100, ge=1, le=500),
+        startup_candidates_only: bool = Query(default=False),
+    ) -> list[CompanyIntelligenceProfile]:
+        return await signal_repository.list_company_profiles(
             limit=limit,
             startup_candidates_only=startup_candidates_only,
         )

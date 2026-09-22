@@ -1,5 +1,7 @@
 """Async SQLAlchemy implementation of signal persistence."""
 
+from __future__ import annotations
+
 import hashlib
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -26,9 +28,11 @@ from orbital_signal.db_models import (
 )
 from orbital_signal.domain import (
     AwardRecord,
+    CompanyIntelligenceProfile,
     CompanySignal,
     IngestionResult,
 )
+from orbital_signal.profiles import build_company_profiles
 
 
 def _normalize_company_name(value: str) -> str:
@@ -117,6 +121,43 @@ class SqlAlchemySignalRepository:
             )
             for signal_model, award_model, company_model in rows
         ]
+
+    async def list_company_profiles(
+        self,
+        *,
+        limit: int = 100,
+        startup_candidates_only: bool = False,
+    ) -> list[CompanyIntelligenceProfile]:
+        statement = (
+            select(SignalModel, AwardModel, CompanyModel)
+            .join(
+                AwardModel,
+                SignalModel.award_id == AwardModel.id,
+            )
+            .join(
+                CompanyModel,
+                SignalModel.company_id == CompanyModel.id,
+            )
+        )
+
+        async with self._session_factory() as session:
+            rows = (await session.execute(statement)).all()
+
+        signals = [
+            self._to_domain_signal(
+                signal_model,
+                award_model,
+                company_model,
+            )
+            for signal_model, award_model, company_model in rows
+        ]
+
+        profiles = build_company_profiles(signals)
+
+        if startup_candidates_only:
+            profiles = [profile for profile in profiles if profile.startup_candidate]
+
+        return profiles[:limit]
 
     async def count(self) -> int:
         statement = select(func.count()).select_from(SignalModel)

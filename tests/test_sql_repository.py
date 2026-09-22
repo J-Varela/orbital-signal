@@ -283,3 +283,62 @@ async def test_repository_records_ingestion_run_lifecycle() -> None:
         assert failed.completed_at is not None
     finally:
         await engine.dispose()
+
+
+async def test_repository_builds_company_profiles_from_persisted_signals() -> None:
+    engine = build_async_engine("sqlite+aiosqlite:///:memory:")
+
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        session_factory = build_session_factory(engine)
+        repository = SqlAlchemySignalRepository(session_factory)
+
+        first_award = make_award(
+            award_id="PROFILE-001",
+            company_name="Acme Space, Inc.",
+            uei="ACME-PROFILE",
+            amount=1_000_000,
+        )
+        second_award = make_award(
+            award_id="PROFILE-002",
+            company_name="Acme Space, Inc.",
+            uei="ACME-PROFILE",
+            amount=3_000_000,
+        )
+
+        await repository.upsert(
+            first_award,
+            make_signal(
+                first_award,
+                signal_id="profile-signal-001",
+                score=8,
+                candidate=True,
+                priority_score=65,
+            ),
+        )
+        await repository.upsert(
+            second_award,
+            make_signal(
+                second_award,
+                signal_id="profile-signal-002",
+                score=10,
+                candidate=True,
+                priority_score=92,
+            ),
+        )
+
+        [profile] = await repository.list_company_profiles()
+
+        assert profile.company_name == "Acme Space, Inc."
+        assert profile.company_uei == "ACME-PROFILE"
+        assert profile.signal_count == 2
+        assert profile.total_amount == 4_000_000
+        assert profile.average_relevance_score == 9
+        assert profile.max_priority_score == 92
+        assert profile.startup_candidate is True
+        assert profile.established_contractor is False
+
+    finally:
+        await engine.dispose()

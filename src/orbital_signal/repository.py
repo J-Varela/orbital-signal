@@ -1,14 +1,18 @@
 """Signal persistence contracts and in-memory implementation."""
 
+from __future__ import annotations
+
 from datetime import date
 from typing import Protocol
 from uuid import uuid4
 
 from orbital_signal.domain import (
     AwardRecord,
+    CompanyIntelligenceProfile,
     CompanySignal,
     IngestionResult,
 )
+from orbital_signal.profiles import build_company_profiles
 
 
 class SignalRepository(Protocol):
@@ -30,6 +34,14 @@ class SignalRepository(Protocol):
         startup_candidates_only: bool = False,
     ) -> list[CompanySignal]:
         """Return matching signals in descending intelligence order."""
+
+    async def list_company_profiles(
+        self,
+        *,
+        limit: int = 100,
+        startup_candidates_only: bool = False,
+    ) -> list[CompanyIntelligenceProfile]:
+        """Return aggregated company intelligence in priority order."""
 
     async def count(self) -> int:
         """Return the number of stored signals."""
@@ -99,6 +111,19 @@ class InMemorySignalRepository:
             ),
             reverse=True,
         )[:limit]
+
+    async def list_company_profiles(
+        self,
+        *,
+        limit: int = 100,
+        startup_candidates_only: bool = False,
+    ) -> list[CompanyIntelligenceProfile]:
+        profiles = build_company_profiles(self._signals.values())
+
+        if startup_candidates_only:
+            profiles = [profile for profile in profiles if profile.startup_candidate]
+
+        return profiles[:limit]
 
     async def count(self) -> int:
         return len(self._signals)
