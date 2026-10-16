@@ -1,8 +1,11 @@
-from datetime import date
+from collections.abc import AsyncIterator
+from datetime import UTC, date, datetime, timedelta
 
+import pytest
 from sqlalchemy import func, select
 
 from orbital_signal.database import (
+    AsyncSessionFactory,
     build_async_engine,
     build_session_factory,
 )
@@ -20,6 +23,7 @@ from orbital_signal.domain import (
     IngestionResult,
     OrganizationType,
 )
+from orbital_signal.services import SignalReclassificationService
 from orbital_signal.sql_repository import SqlAlchemySignalRepository
 
 
@@ -27,7 +31,7 @@ def make_award(
     *,
     award_id: str,
     company_name: str,
-    uei: str,
+    uei: str | None,
     amount: float,
 ) -> AwardRecord:
     return AwardRecord(
@@ -54,7 +58,7 @@ def make_signal(
     signal_id: str,
     score: int,
     candidate: bool,
-    priority_score: 73,
+    priority_score: int,
 ) -> CompanySignal:
     return CompanySignal(
         signal_id=signal_id,
@@ -75,6 +79,46 @@ def make_signal(
         source=award.source,
         source_award_id=award.source_award_id,
         evidence_url=award.source_url,
+    )
+
+
+@pytest.fixture
+async def persisted_repository() -> AsyncIterator[
+    tuple[SqlAlchemySignalRepository, AsyncSessionFactory]
+]:
+    engine = build_async_engine("sqlite+aiosqlite:///:memory:")
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        session_factory = build_session_factory(engine)
+        yield SqlAlchemySignalRepository(session_factory), session_factory
+    finally:
+        await engine.dispose()
+
+
+async def store_test_award(
+    repository: SqlAlchemySignalRepository,
+    *,
+    award_id: str,
+    company_name: str,
+    uei: str | None,
+    source: str = "usaspending",
+) -> None:
+    award = make_award(
+        award_id=award_id,
+        company_name=company_name,
+        uei=uei,
+        amount=100_000,
+    ).model_copy(update={"source": source})
+    await repository.upsert(
+        award,
+        make_signal(
+            award,
+            signal_id=f"signal-{award_id}",
+            score=8,
+            candidate=True,
+            priority_score=73,
+        ),
     )
 
 
@@ -342,3 +386,312 @@ async def test_repository_builds_company_profiles_from_persisted_signals() -> No
 
     finally:
         await engine.dispose()
+
+
+async def test_sql_reclassification_updates_persisted_amentum_signal() -> None:
+    engine = build_async_engine("sqlite+aiosqlite:///:memory:")
+
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+        session_factory = build_session_factory(engine)
+        repository = SqlAlchemySignalRepository(session_factory)
+
+        award = AwardRecord(
+            source="usaspending",
+            source_award_id="80ARC026FA012",
+            recipient_name="AMENTUM TECHNOLOGY, INC.",
+            recipient_uei="K8QPQLGTRM33",
+            amount=6_012_605.65,
+            awarding_agency="National Aeronautics and Space Administration",
+            description=(
+                "AEROSPACE TESTING AND FACILITIES OPERATIONS AND MAINTENANCE "
+                "(ATOM-5) THE PRINCIPAL PURPOSE OF THIS CONTRACT IS TO ACQUIRE "
+                "SUPPORT SERVICES FOR THE ARC GROUNDS-BASED AEROSPACE TEST FACILITIES."
+            ),
+            action_date=date(2026, 8, 20),
+            source_url=(
+                "https://www.usaspending.gov/award/CONT_AWD_80ARC026FA012_8000_80ARC022DA011_8000"
+            ),
+        )
+
+        stale_signal = CompanySignal(
+            signal_id="0aa9dba5c1bc62499ba5",
+            company_name="AMENTUM TECHNOLOGY, INC.",
+            company_uei="K8QPQLGTRM33",
+            occurred_on=date(2026, 8, 20),
+            amount=6_012_605.65,
+            agency="National Aeronautics and Space Administration",
+            summary=award.description,
+            relevance_score=5,
+            priority_score=61,
+            priority_reasons=[
+                "space relevance (+20)",
+                "recent transaction within 30 days (+18)",
+                "startup candidate (+15)",
+                "award value at least $1M (+8)",
+            ],
+            matched_terms=["aerospace"],
+            reasons=["stale classification"],
+            organization_type=OrganizationType.COMPANY,
+            is_startup_candidate=True,
+            quality_flags=[],
+            source="usaspending",
+            source_award_id="80ARC026FA012",
+            evidence_url=award.source_url,
+        )
+
+        original_detected_at = stale_signal.detected_at
+
+        await repository.upsert(
+            award,
+            stale_signal,
+        )
+
+        service = SignalReclassificationService(
+            repository=repository,
+        )
+
+        result = await service.reclassify(
+            as_of=date(2026, 9, 16),
+        )
+
+        assert result.scanned_count == 1
+        assert result.reclassified_count == 1
+        assert result.removed_count == 0
+
+        [updated] = await repository.list()
+
+        assert updated.signal_id == stale_signal.signal_id
+        assert updated.is_startup_candidate is False
+        assert updated.quality_flags == ["established_contractor"]
+        assert updated.priority_score == 46
+        assert "startup candidate (+15)" not in updated.priority_reasons
+        assert updated.detected_at == original_detected_at
+
+        [profile] = await repository.list_company_profiles()
+
+        assert profile.company_name == "AMENTUM TECHNOLOGY, INC."
+        assert profile.startup_candidate is False
+        assert profile.established_contractor is True
+
+    finally:
+        await engine.dispose()
+
+
+async def test_company_identity_keeps_distinct_ueis_and_ambiguous_names_separate(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    for award_id, uei in [("A", "UEI-A"), ("B", "UEI-B"), ("C", None), ("D", None)]:
+        await store_test_award(
+            repository,
+            award_id=award_id,
+            company_name="Shared Space LLC",
+            uei=uei,
+        )
+
+    async with session_factory() as session:
+        companies = (await session.scalars(select(Company))).all()
+    assert len(companies) == 3
+    assert {company.uei for company in companies} == {"UEI-A", "UEI-B", None}
+    profiles = await repository.list_company_profiles()
+    assert {profile.company_uei: profile.signal_count for profile in profiles} == {
+        "UEI-A": 1,
+        "UEI-B": 1,
+        None: 2,
+    }
+
+
+async def test_company_identity_resolves_renamed_source_alias_without_uei(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    for award_id, company_name, uei in [
+        ("A", "Original Space LLC", "UEI-A"),
+        ("B", "Renamed Space LLC", "UEI-A"),
+        ("C", "Renamed Space LLC", None),
+    ]:
+        await store_test_award(
+            repository,
+            award_id=award_id,
+            company_name=company_name,
+            uei=uei,
+        )
+
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(Company)) == 1
+    [profile] = await repository.list_company_profiles()
+    assert profile.company_uei == "UEI-A"
+    assert profile.signal_count == 3
+
+
+async def test_company_identity_does_not_resolve_alias_from_another_source(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    await store_test_award(repository, award_id="A", company_name="Original Space LLC", uei="UEI-A")
+    await store_test_award(repository, award_id="B", company_name="Renamed Space LLC", uei="UEI-A")
+    await store_test_award(
+        repository,
+        award_id="C",
+        company_name="Renamed Space LLC",
+        uei=None,
+        source="other-source",
+    )
+
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(Company)) == 2
+
+
+async def test_company_identity_does_not_resolve_ambiguous_source_alias(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    for award_id, company_name, uei in [
+        ("A", "Original A LLC", "UEI-A"),
+        ("B", "Original B LLC", "UEI-B"),
+        ("C", "Shared Alias LLC", "UEI-A"),
+        ("D", "Shared Alias LLC", "UEI-B"),
+        ("E", "Shared Alias LLC", None),
+    ]:
+        await store_test_award(
+            repository,
+            award_id=award_id,
+            company_name=company_name,
+            uei=uei,
+        )
+
+    async with session_factory() as session:
+        companies = (await session.scalars(select(Company))).all()
+    assert len(companies) == 3
+    assert {company.uei for company in companies} == {"UEI-A", "UEI-B", None}
+
+
+async def test_company_identity_normalizes_uei_case_and_whitespace(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    await store_test_award(
+        repository, award_id="A", company_name="Original Space LLC", uei="  uei-a  "
+    )
+    await store_test_award(repository, award_id="B", company_name="Renamed Space LLC", uei="UEI-A")
+
+    async with session_factory() as session:
+        [company] = (await session.scalars(select(Company))).all()
+    assert company.uei == "UEI-A"
+
+
+async def test_duplicate_upsert_preserves_first_detection_times(persisted_repository) -> None:
+    repository, session_factory = persisted_repository
+    award = make_award(award_id="A", company_name="Example Space LLC", uei="UEI-A", amount=100_000)
+    detected_at = datetime(2026, 8, 1, 12, 30, tzinfo=UTC)
+    signal = make_signal(
+        award, signal_id="signal-A", score=8, candidate=True, priority_score=73
+    ).model_copy(update={"detected_at": detected_at})
+    await repository.upsert(award, signal)
+    assert (
+        await repository.upsert(
+            award,
+            signal.model_copy(update={"detected_at": detected_at + timedelta(days=1)}),
+        )
+        is False
+    )
+
+    [stored] = await repository.list()
+    assert stored.detected_at == detected_at
+    async with session_factory() as session:
+        [stored_award] = (await session.scalars(select(Award))).all()
+    assert stored_award.detected_at.replace(tzinfo=UTC) == detected_at
+
+
+async def test_upsert_reuses_legacy_display_id_award_and_preserves_signal_id(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    award = make_award(
+        award_id="DISPLAY-ID", company_name="Example Space LLC", uei="UEI-A", amount=100_000
+    )
+    signal = make_signal(
+        award, signal_id="legacy-signal", score=8, candidate=True, priority_score=73
+    )
+    await repository.upsert(award, signal)
+    canonical_award = award.model_copy(
+        update={"source_award_id": award.generated_internal_id, "amount": 200_000}
+    )
+    canonical_signal = make_signal(
+        canonical_award,
+        signal_id="canonical-signal",
+        score=9,
+        candidate=True,
+        priority_score=80,
+    )
+    assert await repository.upsert(canonical_award, canonical_signal) is False
+
+    [stored] = await repository.list()
+    assert stored.signal_id == "legacy-signal"
+    assert stored.source_award_id == award.generated_internal_id
+    assert stored.amount == 200_000
+    assert stored.detected_at == signal.detected_at
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(Award)) == 1
+        assert await session.scalar(select(func.count()).select_from(Signal)) == 1
+
+
+async def test_upsert_keeps_different_generated_award_ids_separate(persisted_repository) -> None:
+    repository, session_factory = persisted_repository
+    for index in [1, 2]:
+        generated_id = f"CONT_AWD_DISPLAY-ID_AGENCY-{index}"
+        award = make_award(
+            award_id=generated_id,
+            company_name="Example Space LLC",
+            uei="UEI-A",
+            amount=100_000,
+        ).model_copy(update={"generated_internal_id": generated_id})
+        signal = make_signal(
+            award,
+            signal_id=f"signal-{index}",
+            score=8,
+            candidate=True,
+            priority_score=73,
+        )
+        assert await repository.upsert(award, signal) is True
+
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(Award)) == 2
+    assert await repository.count() == 2
+
+
+async def test_sql_reclassification_retains_evidence_and_restores_removed_signal(
+    persisted_repository,
+) -> None:
+    repository, session_factory = persisted_repository
+    award = make_award(
+        award_id="A", company_name="Example Space LLC", uei="UEI-A", amount=100_000
+    ).model_copy(update={"description": "Office supplies", "naics_code": None, "psc_code": None})
+    signal = make_signal(award, signal_id="signal-A", score=8, candidate=True, priority_score=73)
+    await repository.upsert(award, signal)
+    service = SignalReclassificationService(repository=repository)
+    result = await service.reclassify(as_of=date(2026, 9, 16))
+    assert result.scanned_count == 1
+    assert result.removed_count == 1
+    assert await repository.count() == 0
+    [retained] = await repository.list_reclassification_inputs()
+    assert retained.signal is None
+    assert retained.award.description == "Office supplies"
+    assert retained.detected_at == signal.detected_at
+
+    async with session_factory.begin() as session:
+        [stored_award] = (await session.scalars(select(Award))).all()
+        stored_award.description = "Lunar spacecraft prototype"
+
+    result = await service.reclassify(as_of=date(2026, 9, 16))
+    assert result.scanned_count == 1
+    assert result.reclassified_count == 1
+    assert result.removed_count == 0
+    [restored] = await repository.list()
+    assert restored.summary == "Lunar spacecraft prototype"
+    assert restored.detected_at == signal.detected_at
+    async with session_factory() as session:
+        assert await session.scalar(select(func.count()).select_from(Award)) == 1

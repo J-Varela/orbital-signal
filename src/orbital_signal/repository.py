@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Protocol
 from uuid import uuid4
 
@@ -13,6 +14,15 @@ from orbital_signal.domain import (
     IngestionResult,
 )
 from orbital_signal.profiles import build_company_profiles
+
+
+@dataclass(frozen=True)
+class SignalReclassificationInput:
+    """Stored award evidence, including awards whose signal was removed."""
+
+    award: AwardRecord
+    signal: CompanySignal | None
+    detected_at: datetime
 
 
 class SignalRepository(Protocol):
@@ -42,6 +52,14 @@ class SignalRepository(Protocol):
         startup_candidates_only: bool = False,
     ) -> list[CompanyIntelligenceProfile]:
         """Return aggregated company intelligence in priority order."""
+
+    async def list_reclassification_inputs(
+        self,
+    ) -> list[SignalReclassificationInput]:
+        """Return all retained evidence and any current derived signal."""
+
+    async def delete_signal(self, signal_id: str) -> bool:
+        """Delete a derived signal while preserving its source evidence."""
 
     async def count(self) -> int:
         """Return the number of stored signals."""
@@ -75,16 +93,46 @@ class InMemorySignalRepository:
 
     def __init__(self) -> None:
         self._signals: dict[str, CompanySignal] = {}
+        self._awards: dict[str, AwardRecord] = {}
+        self._detected_at: dict[str, datetime] = {}
 
     async def upsert(
         self,
-        _award: AwardRecord,
+        award: AwardRecord,
         signal: CompanySignal,
     ) -> bool:
         """Store a signal and return True only when newly inserted."""
 
-        inserted = signal.signal_id not in self._signals
-        self._signals[signal.signal_id] = signal
+        existing_id = next(
+            (
+                signal_id
+                for signal_id, stored_award in self._awards.items()
+                if stored_award.source == award.source
+                and (
+                    stored_award.source_award_id == award.source_award_id
+                    or (
+                        award.generated_internal_id is not None
+                        and stored_award.generated_internal_id == award.generated_internal_id
+                    )
+                )
+            ),
+            signal.signal_id,
+        )
+        inserted = existing_id not in self._signals
+        signal_id = signal.signal_id if inserted else existing_id
+        detected_at = self._detected_at.get(existing_id, signal.detected_at)
+
+        # Evidence survives deletion. Move its key when restoration uses a new
+        # canonical ID rather than retaining two copies of the same award.
+        if existing_id != signal_id:
+            self._awards.pop(existing_id, None)
+            self._detected_at.pop(existing_id, None)
+
+        self._signals[signal_id] = signal.model_copy(
+            update={"signal_id": signal_id, "detected_at": detected_at}
+        )
+        self._awards[signal_id] = award
+        self._detected_at[signal_id] = detected_at
         return inserted
 
     async def list(
@@ -124,6 +172,25 @@ class InMemorySignalRepository:
             profiles = [profile for profile in profiles if profile.startup_candidate]
 
         return profiles[:limit]
+
+    async def list_reclassification_inputs(
+        self,
+    ) -> list[SignalReclassificationInput]:
+        return [
+            SignalReclassificationInput(
+                award=award,
+                signal=self._signals.get(signal_id),
+                detected_at=self._detected_at[signal_id],
+            )
+            for signal_id, award in self._awards.items()
+        ]
+
+    async def delete_signal(self, signal_id: str) -> bool:
+        existed = signal_id in self._signals
+
+        self._signals.pop(signal_id, None)
+
+        return existed
 
     async def count(self) -> int:
         return len(self._signals)

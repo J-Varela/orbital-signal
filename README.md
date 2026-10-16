@@ -1,97 +1,152 @@
 # Orbital Signal
 
-Orbital Signal is an early-warning intelligence system for emerging space
-companies.
+Orbital Signal turns public federal contract records into explainable evidence
+about space companies. It helps users find relevant recipients, prioritize
+activity, and inspect the awards behind each result.
 
-It connects public government-award evidence, recipient identities, explainable
-space-relevance scoring, and event-quality classification so users can see where
-space funding and contract activity are moving.
+Runtime version: `0.1.0-alpha.2` (package version `0.1.0a2`). This documentation
+covers current development beyond the tagged Alpha 2 release; see
+[Unreleased changes](CHANGELOG.md#unreleased).
 
-Current application version: `v0.1.0-alpha.2`
-
-## Current capability
-
-Orbital Signal implements its first complete intelligence path:
+## What it does today
 
 ```text
-USAspending API
-    -> normalized federal award
-    -> space-relevance assessment
-    -> organization and event-quality assessment
-    -> queryable company signal
+USAspending NASA and DoD prime contracts
+    -> normalized award evidence and transaction-date enrichment
+    -> explainable space relevance, recipient quality, and priority scoring
+    -> PostgreSQL companies, aliases, awards, signals, and ingestion runs
+    -> FastAPI signal feeds and aggregated company profiles
 ```
 
-The system currently:
+- Searches NASA and Department of Defense separately, with bounded pagination.
+- Preserves source identifiers, evidence URLs, award dates, and first detection
+  times across repeated ingestion.
+- Separates space relevance from heuristic startup-candidate eligibility.
+- Ranks signals using relevance, transaction recency, award value, candidate
+  eligibility, and technology terms, with reasons attached to each score.
+- Filters signals by relevance, priority, and startup-candidate eligibility.
+- Aggregates company signal counts, award amounts, agencies, and latest dates.
+- Reclassifies persisted evidence using current rules without another source
+  fetch, preserving evidence for later reconsideration.
+- Records ingestion outcomes and retries selected transient upstream failures.
 
-- Searches NASA and Department of Defense prime contracts.
-- Normalizes external awards into typed domain models.
-- Scores space relevance using deterministic, explainable rules.
-- Separates space relevance from startup-candidate eligibility.
-- Preserves source identifiers and direct evidence URLs.
-- Deduplicates awards and signals with stable identifiers.
-- Exposes ingestion and signal retrieval through FastAPI.
-- Supports a startup-candidate-only feed.
-- Runs unit and API tests without live-network access.
+There is no dashboard, scheduler, alert delivery, or additional source adapter
+yet. A focused product direction is described in the [roadmap](docs/roadmap.md).
 
-## Why the classifications are separate
+## Run locally
 
-A record can be strongly space-related without being useful for tracking an
-emerging company.
-
-Examples include:
-
-- University research awards
-- Conference and exhibit purchases
-- Training contracts
-- Minor equipment service modifications
-- Awards to established research laboratories
-
-Orbital Signal therefore asks two separate questions:
-
-1. Is this event related to the space sector?
-2. Does this event belong in the startup-candidate feed?
-
-Raw space-relevant evidence remains available even when an event is excluded
-from the startup-candidate view.
-
-`startup_candidate=true` currently means a commercial recipient with a
-qualifying space-related event. It is not a verified claim about the company's
-age, funding stage, ownership, or venture backing.
-
-## Technology
-
-- Python 3.12
-- FastAPI
-- Pydantic
-- Pydantic Settings
-- HTTPX
-- Uvicorn
-- pytest
-- Ruff
-- uv
-
-## Setup
-
-Clone the GitHub repository:
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and Docker Compose (or a
+separately managed PostgreSQL database).
 
 ```bash
-cd ~/dev/hermes-lab/apps
-
-git clone https://github.com/J-Varela/orbital-signal.git
-
-cd orbital-signal
+uv sync --locked
+docker compose up -d --wait postgres
+uv run alembic upgrade head
+uv run orbital-signal
 ```
 
-Install the locked environment:
+The Compose service runs PostgreSQL 17 on `127.0.0.1:55432` and stores data in a
+named volume. The application's default database URL matches that service.
+Migrations must run before database-backed API requests; startup does not create
+the schema automatically.
+
+Copy `.env.example` to `.env` when overrides are needed. `.env` is ignored by Git.
+For another database, set `ORBITAL_SIGNAL_DATABASE_URL` to an async SQLAlchemy
+PostgreSQL URL such as `postgresql+asyncpg://user:password@host:5432/database`.
+
+The API listens at `http://127.0.0.1:8000`; interactive documentation is at
+[`/docs`](http://127.0.0.1:8000/docs). This is a local, trusted API with no
+authentication. Ingestion and reclassification routes mutate stored data.
 
 ```bash
-uv sync
+curl --fail-with-body -s http://127.0.0.1:8000/health
 ```
 
-`uv sync` creates `.venv` automatically when necessary. Manual activation is
-optional when commands are run through `uv run`.
+The response is `{"status":"ok","version":"0.1.0-alpha.2"}`. This checks
+application liveness, not database connectivity, migration status, or source
+availability.
 
-Run the quality gates:
+## Ingest and query
+
+With the API running:
+
+```bash
+curl --fail-with-body -s -X POST \
+  "http://127.0.0.1:8000/api/v1/ingestions/usaspending?start_date=2026-01-01&end_date=2026-10-16"
+
+curl --fail-with-body -s \
+  "http://127.0.0.1:8000/api/v1/signals?minimum_score=4&minimum_priority_score=40&startup_candidates_only=true&limit=25"
+
+curl --fail-with-body -s \
+  "http://127.0.0.1:8000/api/v1/companies?startup_candidates_only=true&limit=25"
+```
+
+USAspending currently requires no API key. A large date range can hit the
+five-page-per-agency limit and does not guarantee complete coverage.
+
+After scoring rules change, recompute retained evidence locally:
+
+```bash
+curl --fail-with-body -s -X POST \
+  "http://127.0.0.1:8000/api/v1/reclassifications/signals?as_of=2026-10-16"
+```
+
+`as_of` controls priority recency scoring and defaults to the server's current
+date. Reclassification returns scanned, reclassified, and removed counts;
+removing a derived signal preserves the underlying award evidence.
+
+## API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Application liveness and version |
+| `POST` | `/api/v1/ingestions/usaspending` | Ingest awards for a required date range |
+| `GET` | `/api/v1/signals` | Ranked signals with relevance, priority, and candidate filters |
+| `GET` | `/api/v1/companies` | Ranked company profiles, optionally candidate-only |
+| `POST` | `/api/v1/reclassifications/signals` | Recompute classifications from local evidence |
+
+Signal queries accept `minimum_score` (default `4`),
+`minimum_priority_score` (default `0`), `startup_candidates_only` (default
+`false`), and `limit` (default `100`, maximum `500`). Company queries accept
+`startup_candidates_only` and the same limit bounds.
+
+## Understand the evidence
+
+Space relevance uses deterministic agency, text, NAICS, and PSC rules with a
+default threshold of `4`. Agency membership alone does not qualify an award.
+The live USAspending adapter currently populates agency and text evidence, not
+NAICS or PSC codes.
+
+Startup-candidate status means a recipient passes commercial-name and event
+quality rules, including a `$25,000` minimum amount and exclusions for known
+established contractors, institutions, and administrative or training events.
+It does not verify company age, ownership, funding stage, or venture backing.
+
+`occurred_on` uses the latest available transaction `action_date`, falling back
+to the award start date. Priority recency points require an action date.
+`detected_at` records first observation separately. The latest transaction date
+can be outside the requested ingestion window; these remain award-level
+signals, not a transaction ledger.
+
+Profile `total_amount` sums source award amounts across retained signals. It is
+not verified revenue, new obligations in the search window, or proof of growth.
+Relevance and priority are explainable ranking heuristics, not investment or
+financial-health assessments. Inspect the linked source evidence.
+
+## Operational boundaries
+
+- Runtime storage is PostgreSQL; the in-memory repository is for isolated tests.
+- Ingestion fetches at most five pages of 100 awards per agency (1,000 records
+  before deduplication for the two default agencies).
+- Transaction enrichment can add one upstream request per award with an
+  internal identifier, with bounded concurrency and selective retries.
+- Ingestion and reclassification run within the HTTP request. Company profile
+  aggregation and reclassification load their inputs into application memory.
+- Ingestion commits records incrementally. A failed run can leave earlier
+  records persisted, and a process interruption can leave a run marked running.
+- Concurrent ingestion and reclassification are not coordinated by a job queue.
+
+## Development
 
 ```bash
 uv run ruff check .
@@ -99,149 +154,16 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-## Run the API
-
-Start the development server:
-
-```bash
-uv run orbital-signal
-```
-
-Or run Uvicorn directly:
-
-```bash
-uv run uvicorn orbital_signal.api:app --reload
-```
-
-Open the interactive API documentation:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-Verify the service:
-
-```bash
-curl -s http://127.0.0.1:8000/health \
-  | python3 -m json.tool
-```
-
-Expected response:
-
-```json
-{
-  "status": "ok",
-  "version": "0.1.0-alpha.2"
-}
-```
-
-## First live ingestion
-
-With the API running, ingest a date range:
-
-```bash
-curl -s -X POST \
-  "http://127.0.0.1:8000/api/v1/ingestions/usaspending?start_date=2026-01-01&end_date=2026-08-25" \
-  | python3 -m json.tool
-```
-
-Retrieve retained space signals:
-
-```bash
-curl -s \
-  "http://127.0.0.1:8000/api/v1/signals?minimum_score=4&limit=25" \
-  | python3 -m json.tool
-```
-
-Retrieve the cleaner startup-candidate feed:
-
-```bash
-curl -s \
-  "http://127.0.0.1:8000/api/v1/signals?minimum_score=4&limit=25&startup_candidates_only=true" \
-  | python3 -m json.tool
-```
-
-The public USAspending API currently requires no API key.
-
-## Relevance scoring
-
-Every retained signal records the evidence used to calculate its score.
-
-| Evidence | Points |
-| --- | ---: |
-| Space-focused awarding organization | 3 |
-| Strong space term | 4 |
-| Supporting aerospace term | 2 |
-| Space-manufacturing NAICS code | 5 |
-| Space-related PSC code | 4 |
-
-The default inclusion threshold is `4`.
-
-Agency membership alone is insufficient. This prevents ordinary NASA facility
-and administrative contracts from entering the signal feed solely because NASA
-issued them.
-
-The current USAspending adapter does not yet populate NAICS or PSC fields, so
-live Alpha 2 USAspending records are presently evaluated through agency and text
-evidence.
-
-## API
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Return service status and version |
-| `POST` | `/api/v1/ingestions/usaspending` | Ingest awards for a date range |
-| `GET` | `/api/v1/signals` | Retrieve retained signals |
-
-Signal retrieval supports:
-
-- `minimum_score`
-- `limit`
-- `startup_candidates_only`
+Tests use mocked upstream requests and injected repositories; database tests
+use SQLite without a live PostgreSQL service. For real deployment changes,
+also validate migrations and behavior against PostgreSQL.
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md)
 - [Architecture](docs/architecture.md)
-- [Data sources](docs/data-sources.md)
+- [Data sources and interpretation](docs/data-sources.md)
 - [Development and release workflow](docs/development.md)
+- [Product direction](docs/roadmap.md)
+- [Changelog](CHANGELOG.md)
 
-## Current boundary
-
-Alpha 2 stores signals in memory.
-
-Restarting the API clears all ingested records, and multiple application
-processes do not share state.
-
-The next milestone will introduce:
-
-- PostgreSQL persistence
-- Alembic migrations
-- Durable ingestion runs
-- Canonical company identities
-- Company aliases
-- Idempotent database upserts
-- Explicit award-date semantics
-
-Additional sources such as SEC Form D, NASA procurement forecasts, and SBIR/STTR
-records will follow after the durable storage and identity layers are established.
-
-## Evidence and interpretation
-
-Each signal preserves its source award identifier and USAspending evidence URL.
-
-A relevance score expresses how strongly the available evidence relates to the
-space sector. It does not represent:
-
-- Investment quality
-- Financial health
-- Confirmed startup status
-- Guaranteed future revenue
-- Confirmation of private fundraising
-
-Users should inspect the underlying source evidence before making business,
-employment, or investment decisions.
-
-## Repository
-
-GitHub: [J-Varela/orbital-signal](https://github.com/J-Varela/orbital-signal)
+Repository: [J-Varela/orbital-signal](https://github.com/J-Varela/orbital-signal)

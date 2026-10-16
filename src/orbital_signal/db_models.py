@@ -51,7 +51,7 @@ class Company(TimestampMixin, Base):
     normalized_name: Mapped[str] = mapped_column(
         String(500),
         nullable=False,
-        unique=True,
+        index=True,
     )
     uei: Mapped[str | None] = mapped_column(
         String(32),

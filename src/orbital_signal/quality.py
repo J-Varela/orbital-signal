@@ -84,7 +84,10 @@ def assess_signal_quality(
     if organization_type is not OrganizationType.COMPANY:
         quality_flags.append(f"recipient_type:{organization_type.value}")
 
-    if any(pattern in normalized_name for pattern in ESTABLISHED_CONTRACTOR_PATTERNS):
+    if any(
+        re.search(rf"\b{re.escape(pattern)}\b", normalized_name)
+        for pattern in ESTABLISHED_CONTRACTOR_PATTERNS
+    ):
         quality_flags.append("established_contractor")
 
     if award.amount < minimum_candidate_amount:

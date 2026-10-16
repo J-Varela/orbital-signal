@@ -102,6 +102,14 @@ class CompanyIntelligenceProfile(BaseModel):
     established_contractor: bool
 
 
+class SignalReclassificationResult(BaseModel):
+    """Summary of recomputing stored intelligence from persisted evidence."""
+
+    scanned_count: int = Field(ge=0)
+    reclassified_count: int = Field(ge=0)
+    removed_count: int = Field(ge=0)
+
+
 class IngestionResult(BaseModel):
     """Summary of one source ingestion run."""
 

@@ -22,7 +22,9 @@ def build_company_profile(
         raise ValueError("at least one company signal is required")
 
     company_ueis = {
-        signal.company_uei for signal in company_signals if signal.company_uei is not None
+        company_uei
+        for signal in company_signals
+        if (company_uei := _normalize_uei(signal.company_uei)) is not None
     }
 
     if len(company_ueis) > 1:
@@ -99,7 +101,11 @@ def build_company_profiles(
 def _company_identity(signal: CompanySignal) -> str:
     """Prefer UEI identity, falling back to normalized company name."""
 
-    if signal.company_uei:
-        return f"uei:{signal.company_uei.casefold()}"
+    if company_uei := _normalize_uei(signal.company_uei):
+        return f"uei:{company_uei}"
 
     return f"name:{signal.company_name.casefold().strip()}"
+
+
+def _normalize_uei(company_uei: str | None) -> str | None:
+    return company_uei.strip().upper() or None if company_uei else None

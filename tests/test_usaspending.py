@@ -1,9 +1,23 @@
 import json
 from datetime import date
+from typing import Any
 
 import httpx
+import pytest
 
-from orbital_signal.sources.usaspending import USAspendingClient
+from orbital_signal.sources.usaspending import SourceDataError, USAspendingClient
+
+
+def award_result(**overrides: Any) -> dict[str, Any]:
+    return {
+        "Award ID": "DISPLAY-ID",
+        "generated_internal_id": "CONT_AWD_DISPLAY-ID_8000_-NONE-_-NONE-",
+        "Recipient Name": "Example Space LLC",
+        "Award Amount": 100_000,
+        "Awarding Agency": "National Aeronautics and Space Administration",
+        "Description": "Satellite development.",
+        **overrides,
+    }
 
 
 async def test_client_maps_and_paginates_awards() -> None:
@@ -76,8 +90,8 @@ async def test_client_maps_and_paginates_awards() -> None:
     ]
 
     assert [award.source_award_id for award in awards] == [
-        "AWARD-1",
-        "AWARD-2",
+        "CONT_AWD_1",
+        "CONT_AWD_2",
     ]
 
     assert awards[0].recipient_name == "Example Space Company"
@@ -202,3 +216,124 @@ async def test_client_retries_read_timeout() -> None:
 
     assert attempts == 2
     assert awards == []
+
+
+async def test_client_preserves_distinct_awards_with_the_same_display_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v2/transactions/":
+            return httpx.Response(200, json={"results": []})
+
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    award_result(generated_internal_id="CONT_AWD_DISPLAY-ID_8000_PARENT-1_8000"),
+                    award_result(generated_internal_id="CONT_AWD_DISPLAY-ID_8000_PARENT-2_8000"),
+                ],
+                "page_metadata": {"hasNext": False},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = USAspendingClient(http_client, base_url="https://api.usaspending.test")
+        awards = await client.search_awards(
+            start_date=date(2026, 8, 1),
+            end_date=date(2026, 8, 25),
+            agencies=("National Aeronautics and Space Administration",),
+        )
+
+    assert [award.source_award_id for award in awards] == [
+        "CONT_AWD_DISPLAY-ID_8000_PARENT-1_8000",
+        "CONT_AWD_DISPLAY-ID_8000_PARENT-2_8000",
+    ]
+    assert str(awards[0].source_url).endswith(awards[0].source_award_id)
+
+
+@pytest.mark.parametrize("generated_id", [None, "", "  "])
+def test_mapping_falls_back_to_display_id_when_generated_id_is_missing(
+    generated_id: str | None,
+) -> None:
+    award = USAspendingClient._map_award(award_result(generated_internal_id=generated_id))
+
+    assert award.source_award_id == "DISPLAY-ID"
+    assert award.generated_internal_id in {None, ""}
+    assert str(award.source_url).endswith("DISPLAY-ID")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {},
+        {"results": None, "page_metadata": {"hasNext": False}},
+        {"results": {}, "page_metadata": {"hasNext": False}},
+        {"results": [None], "page_metadata": {"hasNext": False}},
+        {"results": []},
+        {"results": [], "page_metadata": None},
+        {"results": [], "page_metadata": {}},
+        {"results": [], "page_metadata": {"hasNext": "false"}},
+    ],
+)
+async def test_client_rejects_malformed_search_responses(payload: Any) -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json=payload))
+
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = USAspendingClient(http_client, base_url="https://api.usaspending.test")
+
+        with pytest.raises(SourceDataError):
+            await client.search_awards(
+                start_date=date(2026, 8, 1),
+                end_date=date(2026, 8, 25),
+            )
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"Award ID": None, "generated_internal_id": None},
+        {"Award Amount": "not-a-number"},
+        {"Award Amount": -1},
+        {"Recipient Name": None},
+        {"Start Date": "invalid-date"},
+    ],
+)
+def test_mapping_wraps_invalid_source_values(overrides: dict[str, Any]) -> None:
+    with pytest.raises(SourceDataError, match="invalid award record"):
+        USAspendingClient._map_award(award_result(**overrides))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {},
+        {"results": None},
+        {"results": [None]},
+        {"results": [{"action_date": "invalid-date"}]},
+        {"results": [{"action_date": 20260825}]},
+    ],
+)
+async def test_client_rejects_malformed_transaction_responses(payload: Any) -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, json=payload))
+
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = USAspendingClient(http_client, base_url="https://api.usaspending.test")
+
+        with pytest.raises(SourceDataError):
+            await client._fetch_latest_action_date(generated_internal_id="CONT_AWD_1")
+
+
+async def test_client_rejects_invalid_json() -> None:
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, content=b"not JSON"))
+
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = USAspendingClient(http_client, base_url="https://api.usaspending.test")
+
+        with pytest.raises(SourceDataError, match="invalid JSON"):
+            await client.search_awards(
+                start_date=date(2026, 8, 1),
+                end_date=date(2026, 8, 25),
+            )
+
+        with pytest.raises(SourceDataError, match="invalid JSON"):
+            await client._fetch_latest_action_date(generated_internal_id="CONT_AWD_1")

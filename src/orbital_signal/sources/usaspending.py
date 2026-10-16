@@ -18,6 +18,10 @@ DEFAULT_AGENCIES = (
 )
 
 
+class SourceDataError(Exception):
+    """USAspending returned a response that does not match the expected data format."""
+
+
 class USAspendingClient:
     """Fetch paginated prime contract awards from USAspending."""
 
@@ -57,16 +61,21 @@ class USAspendingClient:
                     ),
                 )
                 response.raise_for_status()
-                payload = response.json()
-                page_awards = [self._map_award(item) for item in payload.get("results", [])]
+                payload = self._parse_response(response)
+                page_metadata = payload.get("page_metadata")
+                if not isinstance(page_metadata, dict) or not isinstance(
+                    page_metadata.get("hasNext"), bool
+                ):
+                    raise SourceDataError("USAspending search response has invalid page metadata")
+
+                page_awards = [self._map_award(item) for item in payload["results"]]
 
                 enriched_awards = await self._enrich_action_dates(page_awards)
 
                 for award in enriched_awards:
                     awards_by_id[award.source_award_id] = award
 
-                page_metadata = payload.get("page_metadata", {})
-                if not page_metadata.get("hasNext", False):
+                if not page_metadata["hasNext"]:
                     break
 
         return list(awards_by_id.values())
@@ -113,29 +122,53 @@ class USAspendingClient:
 
     @staticmethod
     def _map_award(item: dict[str, Any]) -> AwardRecord:
-        generated_id = item.get("generated_internal_id")
-        award_id = str(item.get("Award ID") or generated_id or "").strip()
-        if not award_id:
-            raise ValueError("USAspending result is missing an award identifier")
+        if not isinstance(item, dict):
+            raise SourceDataError("USAspending award result must be a JSON object")
 
-        recipient_name = str(item.get("Recipient Name") or "").strip()
-        awarding_agency = str(item.get("Awarding Agency") or "").strip()
-        evidence_id = generated_id or award_id
-        evidence_url = f"https://www.usaspending.gov/award/{quote(str(evidence_id), safe='_-')}"
+        try:
+            generated_id = item.get("generated_internal_id")
+            if isinstance(generated_id, str):
+                generated_id = generated_id.strip() or None
 
-        return AwardRecord(
-            source="usaspending",
-            source_award_id=award_id,
-            generated_internal_id=generated_id,
-            recipient_name=recipient_name,
-            recipient_uei=item.get("Recipient UEI") or None,
-            amount=float(item.get("Award Amount") or 0),
-            awarding_agency=awarding_agency,
-            description=str(item.get("Description") or "").strip(),
-            start_date=item.get("Start Date"),
-            end_date=item.get("End Date"),
-            source_url=evidence_url,
-        )
+            # Display award identifiers can repeat across agencies and parent contracts.
+            # The generated identifier includes those components and is globally stable.
+            award_id = str(generated_id or item.get("Award ID") or "").strip()
+            if not award_id:
+                raise ValueError("USAspending result is missing an award identifier")
+
+            evidence_url = f"https://www.usaspending.gov/award/{quote(award_id, safe='_-')}"
+
+            return AwardRecord(
+                source="usaspending",
+                source_award_id=award_id,
+                generated_internal_id=generated_id,
+                recipient_name=item.get("Recipient Name") or "",
+                recipient_uei=item.get("Recipient UEI") or None,
+                amount=float(item.get("Award Amount") or 0),
+                awarding_agency=item.get("Awarding Agency") or "",
+                description=item.get("Description") or "",
+                start_date=item.get("Start Date"),
+                end_date=item.get("End Date"),
+                source_url=evidence_url,
+            )
+        except (TypeError, ValueError) as exc:
+            raise SourceDataError("USAspending returned an invalid award record") from exc
+
+    @staticmethod
+    def _parse_response(response: httpx.Response) -> dict[str, Any]:
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise SourceDataError("USAspending returned invalid JSON") from exc
+
+        if not isinstance(payload, dict):
+            raise SourceDataError("USAspending response must be a JSON object")
+
+        results = payload.get("results")
+        if not isinstance(results, list) or any(not isinstance(item, dict) for item in results):
+            raise SourceDataError("USAspending response results must be a list of JSON objects")
+
+        return payload
 
     async def _fetch_latest_action_date(
         self,
@@ -157,12 +190,20 @@ class USAspendingClient:
         )
         response.raise_for_status()
 
-        results = response.json().get("results", [])
+        results = self._parse_response(response)["results"]
         if not results:
             return None
 
         value = results[0].get("action_date")
-        return date.fromisoformat(value) if value else None
+        if value is None:
+            return None
+
+        try:
+            return date.fromisoformat(value)
+        except (TypeError, ValueError) as exc:
+            raise SourceDataError(
+                "USAspending returned an invalid transaction action date"
+            ) from exc
 
     async def _enrich_action_dates(
         self,

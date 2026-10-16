@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
+from typing import Annotated
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
@@ -14,10 +15,14 @@ from orbital_signal.domain import (
     CompanyIntelligenceProfile,
     CompanySignal,
     IngestionResult,
+    SignalReclassificationResult,
 )
 from orbital_signal.repository import SignalRepository
-from orbital_signal.services import AwardIngestionService
-from orbital_signal.sources.usaspending import USAspendingClient
+from orbital_signal.services import (
+    AwardIngestionService,
+    SignalReclassificationService,
+)
+from orbital_signal.sources.usaspending import SourceDataError, USAspendingClient
 from orbital_signal.sql_repository import SqlAlchemySignalRepository
 
 
@@ -39,10 +44,11 @@ def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        yield
-
-        if engine is not None:
-            await engine.dispose()
+        try:
+            yield
+        finally:
+            if engine is not None:
+                await engine.dispose()
 
     application = FastAPI(
         title="Orbital Signal API",
@@ -86,6 +92,20 @@ def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
         )
 
     @application.post(
+        "/api/v1/reclassifications/signals",
+        response_model=SignalReclassificationResult,
+    )
+    async def reclassify_signals(
+        as_of: Annotated[date | None, Query()] = None,
+    ) -> SignalReclassificationResult:
+        service = SignalReclassificationService(
+            repository=signal_repository,
+        )
+        return await service.reclassify(
+            as_of=as_of or date.today(),
+        )
+
+    @application.post(
         "/api/v1/ingestions/usaspending",
         response_model=IngestionResult,
     )
@@ -113,7 +133,7 @@ def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
                     start_date=start_date,
                     end_date=end_date,
                 )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, SourceDataError) as exc:
             raise HTTPException(
                 status_code=502,
                 detail="USAspending request failed",

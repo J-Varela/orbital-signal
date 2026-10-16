@@ -1,3 +1,5 @@
+import pytest
+
 from orbital_signal.domain import AwardRecord, OrganizationType
 from orbital_signal.quality import assess_signal_quality, classify_organization
 
@@ -111,3 +113,32 @@ def test_unrecognized_technical_company_can_remain_candidate() -> None:
 
     assert assessment.is_startup_candidate is True
     assert "established_contractor" not in assessment.quality_flags
+
+
+@pytest.mark.parametrize(
+    "recipient_name",
+    ["Mosaic Space LLC", "Jacobson Space Systems, Inc."],
+)
+def test_established_contractor_names_must_match_whole_words(recipient_name: str) -> None:
+    assessment = assess_signal_quality(
+        make_award(
+            recipient_name=recipient_name,
+            description="Autonomous lunar navigation system.",
+        )
+    )
+
+    assert assessment.is_startup_candidate is True
+    assert "established_contractor" not in assessment.quality_flags
+
+
+@pytest.mark.parametrize("recipient_name", ["SAIC, Inc.", "Jacobs Engineering Group Inc."])
+def test_established_contractor_names_match_at_punctuation(recipient_name: str) -> None:
+    assessment = assess_signal_quality(
+        make_award(
+            recipient_name=recipient_name,
+            description="Autonomous lunar navigation system.",
+        )
+    )
+
+    assert assessment.is_startup_candidate is False
+    assert "established_contractor" in assessment.quality_flags
