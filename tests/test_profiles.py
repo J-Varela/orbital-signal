@@ -148,6 +148,33 @@ def test_company_profiles_group_by_uei() -> None:
     assert profiles[0].company_uei == "SAME-UEI"
 
 
+@pytest.mark.parametrize("company_uei", ["example123", " example123 "])
+def test_company_profiles_normalize_uei_case_and_whitespace(company_uei: str) -> None:
+    signals = [
+        make_signal(signal_id="001", company_uei="EXAMPLE123"),
+        make_signal(signal_id="002", company_uei=company_uei),
+    ]
+
+    profiles = build_company_profiles(signals)
+
+    assert len(profiles) == 1
+    assert profiles[0].signal_count == 2
+    assert profiles[0].company_uei == "EXAMPLE123"
+
+
+def test_company_profiles_treat_blank_uei_as_missing() -> None:
+    signals = [
+        make_signal(signal_id="001", company_uei=None),
+        make_signal(signal_id="002", company_uei="  "),
+    ]
+
+    profiles = build_company_profiles(signals)
+
+    assert len(profiles) == 1
+    assert profiles[0].signal_count == 2
+    assert profiles[0].company_uei is None
+
+
 def test_company_profiles_fall_back_to_normalized_name() -> None:
     signals = [
         make_signal(

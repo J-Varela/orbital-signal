@@ -1,5 +1,6 @@
 """Deterministic priority scoring for space opportunity signals."""
 
+import re
 from datetime import date
 
 from pydantic import BaseModel, Field
@@ -44,8 +45,8 @@ def assess_opportunity_priority(
     if relevance_points:
         reasons.append(f"space relevance (+{relevance_points})")
 
-    if award.action_date is not None:
-        age_days = max((as_of - award.action_date).days, 0)
+    if award.action_date is not None and award.action_date <= as_of:
+        age_days = (as_of - award.action_date).days
 
         if age_days <= 7:
             score += 25
@@ -76,7 +77,9 @@ def assess_opportunity_priority(
 
     normalized_description = award.description.casefold()
     matched_advanced_terms = [
-        term for term in ADVANCED_TECH_TERMS if term in normalized_description
+        term
+        for term in ADVANCED_TECH_TERMS
+        if re.search(rf"\b{re.escape(term)}s?\b", normalized_description)
     ]
 
     advanced_points = min(len(matched_advanced_terms) * 2, 10)

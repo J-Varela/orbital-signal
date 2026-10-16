@@ -103,3 +103,57 @@ def test_priority_score_is_capped_at_100() -> None:
     )
 
     assert assessment.score == 100
+
+
+def test_future_action_date_gets_no_recency_bonus() -> None:
+    award = make_award(
+        amount=250_000,
+        action_date=date(2027, 9, 15),
+        description="Spacecraft development.",
+    )
+
+    assessment = assess_opportunity_priority(
+        award,
+        relevance_score=8,
+        is_startup_candidate=True,
+        as_of=date(2026, 9, 15),
+    )
+
+    assert assessment.score == 52
+    assert not any("recent transaction" in reason for reason in assessment.reasons)
+
+
+def test_advanced_technology_terms_must_match_whole_words() -> None:
+    award = make_award(
+        amount=250_000,
+        action_date=None,
+        description="Nonautonomous spacecraft operations.",
+    )
+
+    assessment = assess_opportunity_priority(
+        award,
+        relevance_score=8,
+        is_startup_candidate=True,
+        as_of=date(2026, 9, 15),
+    )
+
+    assert assessment.score == 52
+    assert not any("advanced technology" in reason for reason in assessment.reasons)
+
+
+def test_advanced_technology_terms_match_punctuation_and_plurals() -> None:
+    award = make_award(
+        amount=250_000,
+        action_date=None,
+        description="Spacecraft navigation, guidance/sensors development.",
+    )
+
+    assessment = assess_opportunity_priority(
+        award,
+        relevance_score=8,
+        is_startup_candidate=True,
+        as_of=date(2026, 9, 15),
+    )
+
+    assert assessment.score == 58
+    assert "advanced technology evidence (+6)" in assessment.reasons
