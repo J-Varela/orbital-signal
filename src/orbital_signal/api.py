@@ -3,10 +3,13 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import Path
 from typing import Annotated
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from orbital_signal import __version__
 from orbital_signal.config import Settings
@@ -59,6 +62,16 @@ def create_app(*, repository: SignalRepository | None = None) -> FastAPI:
     application.state.repository = signal_repository
     application.state.settings = settings
     application.state.database_engine = engine
+
+    static_directory = Path(__file__).parent / "static"
+    application.mount("/static", StaticFiles(directory=static_directory), name="static")
+
+    @application.get("/", include_in_schema=False)
+    async def dashboard() -> FileResponse:
+        return FileResponse(
+            static_directory / "index.html",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     @application.get("/health")
     async def health() -> dict[str, str]:
