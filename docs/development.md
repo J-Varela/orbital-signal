@@ -22,8 +22,11 @@ Compose starts PostgreSQL 17 at `127.0.0.1:55432`, with local development
 credentials and a named persistent volume. It starts the database only; run the
 API separately. The defaults in `Settings` match the Compose database.
 
-The API listens at `http://127.0.0.1:8000`. Interactive documentation is at
-`/docs`. To enable code reload directly:
+The dashboard is at `http://127.0.0.1:8000/`. Interactive API documentation
+remains at `/docs`. The dashboard uses packaged HTML, CSS, JavaScript, and SVG
+assets under `src/orbital_signal/static`; no frontend build is required. It
+reads the current company and signal APIs without changing the database schema.
+To enable code reload directly:
 
 ```bash
 uv run uvicorn orbital_signal.api:app --reload

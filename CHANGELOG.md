@@ -11,6 +11,9 @@ version metadata remains `0.1.0-alpha.2` until a release is prepared.
 
 ### Added
 
+- Local dashboard at `/` with live company and signal feeds, source evidence,
+  filtering, collection controls, and ranking refreshes. Company timelines use
+  the loaded signal feed; collection activity lasts for the browser page session.
 - PostgreSQL runtime persistence through async SQLAlchemy, with Alembic
   migrations and a local Docker Compose database.
 - Durable companies, aliases, normalized awards, signals, and ingestion runs.

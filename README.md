@@ -29,9 +29,11 @@ USAspending NASA and DoD prime contracts
 - Reclassifies persisted evidence using current rules without another source
   fetch, preserving evidence for later reconsideration.
 - Records ingestion outcomes and retries selected transient upstream failures.
+- Serves a local dashboard at `/` with live signal and company feeds, filters,
+  source evidence, collection controls, and ranking refreshes.
 
-There is no dashboard, scheduler, alert delivery, or additional source adapter
-yet. A focused product direction is described in the [roadmap](docs/roadmap.md).
+There is no scheduler, alert delivery, or additional source adapter yet.
+A focused product direction is described in the [roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -54,9 +56,15 @@ Copy `.env.example` to `.env` when overrides are needed. `.env` is ignored by Gi
 For another database, set `ORBITAL_SIGNAL_DATABASE_URL` to an async SQLAlchemy
 PostgreSQL URL such as `postgresql+asyncpg://user:password@host:5432/database`.
 
-The API listens at `http://127.0.0.1:8000`; interactive documentation is at
-[`/docs`](http://127.0.0.1:8000/docs). This is a local, trusted API with no
+The dashboard is at [`/`](http://127.0.0.1:8000/); interactive API documentation
+remains at [`/docs`](http://127.0.0.1:8000/docs). This is a local, trusted API with no
 authentication. Ingestion and reclassification routes mutate stored data.
+
+The dashboard fetches `/api/v1/companies` and `/api/v1/signals` from the same
+server, with up to 500 results per feed. Company details show matching signals
+from the loaded, filtered feed alongside the full company profile. Collection
+activity shows requests made since the page opened and resets on reload;
+persistent collection history and agency page-coverage reporting are not exposed.
 
 ```bash
 curl --fail-with-body -s http://127.0.0.1:8000/health
@@ -99,6 +107,7 @@ removing a derived signal preserves the underlying award evidence.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| `GET` | `/` | Local intelligence dashboard |
 | `GET` | `/health` | Application liveness and version |
 | `POST` | `/api/v1/ingestions/usaspending` | Ingest awards for a required date range |
 | `GET` | `/api/v1/signals` | Ranked signals with relevance, priority, and candidate filters |
