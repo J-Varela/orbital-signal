@@ -240,6 +240,7 @@ class SqlAlchemySignalRepository:
                     id=run_id,
                     source=source,
                     status="running",
+                    started_at=datetime.now(UTC),
                     requested_start_date=start_date,
                     requested_end_date=end_date,
                 )
@@ -266,7 +267,9 @@ class SqlAlchemySignalRepository:
             ingestion_run.stored_count = result.stored_count
             ingestion_run.duplicate_count = result.duplicate_count
             ingestion_run.error_message = None
-            ingestion_run.completed_at = datetime.now(UTC)
+            ingestion_run.completed_at = max(
+                _ensure_utc(ingestion_run.started_at), datetime.now(UTC)
+            )
 
     async def fail_ingestion(
         self,
@@ -283,7 +286,9 @@ class SqlAlchemySignalRepository:
 
             ingestion_run.status = "failed"
             ingestion_run.error_message = error_message
-            ingestion_run.completed_at = datetime.now(UTC)
+            ingestion_run.completed_at = max(
+                _ensure_utc(ingestion_run.started_at), datetime.now(UTC)
+            )
 
     @staticmethod
     async def _upsert_company(

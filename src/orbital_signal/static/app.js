@@ -6,7 +6,7 @@
     view: "signals", signals: [], companies: [], runs: [],
     loaded: { signals: false, companies: false },
     errors: { signals: null, companies: null },
-    pending: 0, importRunning: false, rankingRunning: false,
+    pending: 0, importRunning: false, rankingRunning: false, monthlyRunning: false,
     requestVersion: 0,
   };
   const money = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -424,7 +424,7 @@
 
   async function submitImport(event) {
     event.preventDefault();
-    if (state.importRunning || !$("import-form").reportValidity()) return;
+    if (state.importRunning || state.monthlyRunning || !$("import-form").reportValidity()) return;
     const start = $("import-start").value;
     const end = $("import-end").value;
     const status = $("import-status");
@@ -432,6 +432,7 @@
     if (state.rankingRunning) { status.textContent = "Wait for the ranking refresh to finish before collecting awards."; status.classList.add("error"); return; }
     if (end < start) { status.textContent = "The end date must be on or after the start date."; status.classList.add("error"); return; }
     state.importRunning = true;
+    document.dispatchEvent(new CustomEvent("orbital:legacy-busy", { detail: true }));
     ["submit-import", "import-start", "import-end", "refresh-rankings"].forEach((id) => { $(id).disabled = true; });
     $("submit-import").textContent = "Collecting…";
     $("open-import").textContent = "Collection in progress…";
@@ -454,6 +455,7 @@
       setNotice(`Collection did not return a successful result. ${run.error_message}`, true);
     } finally {
       state.importRunning = false;
+      document.dispatchEvent(new CustomEvent("orbital:legacy-busy", { detail: false }));
       ["submit-import", "import-start", "import-end"].forEach((id) => { $(id).disabled = false; });
       $("refresh-rankings").disabled = state.rankingRunning;
       $("submit-import").textContent = "Collect awards";
@@ -465,8 +467,9 @@
   }
 
   async function refreshRankings() {
-    if (state.importRunning || state.rankingRunning) return;
+    if (state.importRunning || state.rankingRunning || state.monthlyRunning) return;
     state.rankingRunning = true;
+    document.dispatchEvent(new CustomEvent("orbital:legacy-busy", { detail: true }));
     $("refresh-rankings").disabled = true;
     $("refresh-rankings").textContent = "Refreshing rankings…";
     try {
@@ -475,6 +478,7 @@
     } catch (error) { setNotice(`Ranking refresh failed. ${errorMessage(error)}`, true); }
     finally {
       state.rankingRunning = false;
+      document.dispatchEvent(new CustomEvent("orbital:legacy-busy", { detail: false }));
       $("refresh-rankings").disabled = state.importRunning;
       $("refresh-rankings").textContent = "Refresh rankings";
       await refreshData();
@@ -540,6 +544,13 @@
   ["priority-filter", "relevance-filter", "candidate-filter"].forEach((id) => $(id).addEventListener("change", () => { if ($("filter-form").reportValidity()) refreshData(); }));
   $("clear-filters").addEventListener("click", resetFilters);
   $("refresh-button").addEventListener("click", refreshData);
+  document.addEventListener("orbital:collection-updated", refreshData);
+  document.addEventListener("orbital:monthly-busy", (event) => {
+    state.monthlyRunning = Boolean(event.detail);
+    $("open-import").disabled = state.monthlyRunning;
+    $("submit-import").disabled = state.monthlyRunning || state.importRunning;
+    $("refresh-rankings").disabled = state.monthlyRunning || state.importRunning || state.rankingRunning;
+  });
   $("open-import").addEventListener("click", openImport);
   $("import-form").addEventListener("submit", submitImport);
   $("refresh-rankings").addEventListener("click", refreshRankings);

@@ -1,8 +1,9 @@
 # Orbital Signal
 
-Orbital Signal turns public federal contract records into explainable evidence
-about space companies. It helps users find relevant recipients, prioritize
-activity, and inspect the awards behind each result.
+Orbital Signal is a technology intelligence and discovery workspace for
+understanding companies, their projects, and subjects worth studying. Its
+current pipeline turns NASA and Department of Defense contracts into
+explainable evidence about space companies and their activity.
 
 Runtime version: `0.1.0-alpha.2` (package version `0.1.0a2`). This documentation
 covers current development beyond the tagged Alpha 2 release; see
@@ -31,6 +32,8 @@ USAspending NASA and DoD prime contracts
 - Records ingestion outcomes and retries selected transient upstream failures.
 - Serves a local dashboard at `/` with live signal and company feeds, filters,
   source evidence, collection controls, and ranking refreshes.
+- Supports explicit monthly historical collection, resumable checkpoints, and
+  date subdivision when source windows reach the page limit.
 
 There is no scheduler, alert delivery, or additional source adapter yet.
 A focused product direction is described in the [roadmap](docs/roadmap.md).
@@ -63,8 +66,13 @@ authentication. Ingestion and reclassification routes mutate stored data.
 The dashboard fetches `/api/v1/companies` and `/api/v1/signals` from the same
 server, with up to 500 results per feed. Company details show matching signals
 from the loaded, filtered feed alongside the full company profile. Collection
-activity shows requests made since the page opened and resets on reload;
-persistent collection history and agency page-coverage reporting are not exposed.
+activity for legacy imports resets on reload. Monthly historical collection has
+separate durable window progress and explicit truncation/failure states; see
+[monthly collection](docs/monthly-collection.md) for planning, setup, and limits.
+For daily validation, retry behavior, and retained legacy checkpoints, see
+[collection reliability](docs/collection-reliability.md).
+For the September results review, pacing controls, safe failure limits, and
+pending enrichment recovery, see [collection pacing](docs/collection-pacing.md).
 
 ```bash
 curl --fail-with-body -s http://127.0.0.1:8000/health
@@ -112,6 +120,7 @@ removing a derived signal preserves the underlying award evidence.
 | `POST` | `/api/v1/ingestions/usaspending` | Ingest awards for a required date range |
 | `GET` | `/api/v1/signals` | Ranked signals with relevance, priority, and candidate filters |
 | `GET` | `/api/v1/companies` | Ranked company profiles, optionally candidate-only |
+| `GET` / `POST` | `/api/v1/collections/monthly` | Inspect or collect/resume selected historical months |
 | `POST` | `/api/v1/reclassifications/signals` | Recompute classifications from local evidence |
 
 Signal queries accept `minimum_score` (default `4`),
@@ -172,6 +181,7 @@ also validate migrations and behavior against PostgreSQL.
 - [Architecture](docs/architecture.md)
 - [Data sources and interpretation](docs/data-sources.md)
 - [Development and release workflow](docs/development.md)
+- [Monthly historical collection](docs/monthly-collection.md)
 - [Product direction](docs/roadmap.md)
 - [Changelog](CHANGELOG.md)
 
