@@ -10,6 +10,7 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="/static/app.js" defer></script>
+    <script src="/static/monthly.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -51,10 +52,21 @@
           <div class="panel-footnote" id="results-footnote">Candidate status is a heuristic. Inspect the public evidence behind each result.</div>
         </section>
 
-        <section id="coverage-view" aria-label="Collection session activity" hidden>
+        <section id="coverage-view" aria-label="Historical collection and session activity" hidden>
           <div class="coverage-intro"><div><h2>Collect a focused source window.</h2><p>Each request searches a date window. Searches are bounded and may miss awards beyond the page limit. Choose a narrow window to reduce gaps.</p></div><button class="button button-secondary" id="refresh-rankings" type="button">Refresh rankings</button></div>
-          
-          
+          <section class="panel monthly-panel" aria-labelledby="monthly-title">
+            <div class="section-heading"><div><h2 id="monthly-title">Monthly historical collection</h2><span class="results-note">NASA + Department of Defense · completed calendar months</span></div></div>
+            <form id="monthly-form" class="monthly-controls">
+              <div class="date-fields"><label>From month<input id="monthly-start" type="month" required></label><label>Through month<input id="monthly-end" type="month" required></label></div>
+              <div class="date-fields"><label>Window size (days)<input id="monthly-window-days" type="number" min="1" max="31" value="3" required></label><label>Agency<select id="monthly-agency"><option value="all">NASA and DoD</option><option value="nasa">NASA only</option><option value="dod">DoD only</option></select></label></div>
+              <label class="candidate-filter"><input id="monthly-refresh" type="checkbox"><span>Revisit finished windows to catch revised or delayed records</span></label>
+              <p class="subtext">Resume preserves finished date ranges, including older checkpoints. Searches start with three-day windows; busy windows subdivide down to one day. A capped day remains incomplete.</p>
+              <div class="monthly-actions"><button class="button button-primary" id="monthly-submit" type="submit">Collect or resume</button><button class="button button-secondary" id="monthly-load" type="button">Load saved progress</button></div>
+            </form>
+            <p id="monthly-status" class="form-status" role="status" aria-live="polite"></p>
+            <div id="monthly-progress" aria-live="polite" aria-busy="false"></div>
+            <div class="panel-footnote">Saved progress survives reloads. No reported pagination remaining does not guarantee source completeness. These are current award snapshots, not a historical transaction ledger.</div>
+          </section>
           <section class="panel"><div class="section-heading"><div><h2>Session collection activity</h2><span class="results-note" id="history-note">Requests since this page opened</span></div><span class="label-tag">NASA + DEPARTMENT OF DEFENSE</span></div><div id="coverage-content" aria-live="polite" aria-busy="true"></div><div class="panel-footnote">Activity here resets when this page is reloaded. Stored awards remain in the company and signal feeds. Completion does not guarantee full source coverage; failed requests may retain partial results.</div></section>
         </section>
         <footer class="workspace-footer"><span><span class="tiny-orbit" aria-hidden="true">◉</span> Evidence first. Context always.</span><span>Local workspace · Government award intelligence</span></footer>

@@ -11,6 +11,17 @@ version metadata remains `0.1.0-alpha.2` until a release is prepared.
 
 ### Added
 
+- Configurable window/request pacing, one-worker enrichment control, and a
+  consecutive failed-window limit that stops collection after saving progress.
+  A bounded local pending-page cache retains search results and successful
+  lookups for enrichment-only recovery across later invocations.
+- Configurable small-window collection (three days by default), explicit daily
+  ranges, agency selection, a shared collector lock, and retained attempt metrics.
+  The additive attempt-audit migration preserves known legacy progress.
+- Monthly NASA/DoD historical collection with explicit period selection, safe
+  CLI planning, durable checkpoints, page-limit subdivision, and resume/refresh
+  controls in the dashboard. One additive migration creates checkpoint storage;
+  existing ingestion APIs and evidence tables retain their behavior.
 - Local dashboard at `/` with live company and signal feeds, source evidence,
   filtering, collection controls, and ranking refreshes. Company timelines use
   the loaded signal feed; collection activity lasts for the browser page session.
@@ -38,6 +49,10 @@ version metadata remains `0.1.0-alpha.2` until a release is prepared.
 
 ### Fixed
 
+- Transient USAspending disconnects and connection failures now receive bounded
+  retries with jitter and Retry-After handling; enrichment defaults to two workers
+  and cancels sibling work on failure. Timestamp ordering and legacy checkpoint
+  coverage are preserved during retries and smaller-window resumes.
 - Repeated ingestion preserves first detection time instead of making old
   evidence appear newly observed.
 - Reclassification preserves award evidence and detection history so removal
@@ -56,13 +71,14 @@ version metadata remains `0.1.0-alpha.2` until a release is prepared.
 
 - The API assumes trusted local clients and has no authentication.
 - Startup-candidate status is heuristic, not verified company-stage data.
-- USAspending ingestion is bounded to five pages per configured agency.
+- Legacy USAspending ingestion is bounded to five pages per agency. Small-window
+  collection subdivides busy ranges but retains a five-page cap on a single day.
 - Latest transaction enrichment can produce dates outside the requested search
   window; records are award snapshots rather than transaction histories.
 - Ingestion and reclassification run inside API requests, and bulk profile and
   reclassification inputs are loaded into memory.
-- No scheduler, job queue, coverage/truncation reporting, or automatic recovery
-  of interrupted ingestion runs is implemented.
+- No scheduler or job queue is implemented. Historical collection requires
+  explicit resume; coverage is based on upstream pagination observations.
 - SQLite persistence tests do not replace PostgreSQL deployment validation.
 - The FastAPI test client emits an upstream `httpx2` deprecation warning.
 

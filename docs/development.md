@@ -32,6 +32,15 @@ To enable code reload directly:
 uv run uvicorn orbital_signal.api:app --reload
 ```
 
+Monthly collection adds a separate checkpoint table through migration
+`c961fd3e5a22`; the dashboard and existing API feeds still use their prior tables.
+Migration `d84fc8a61b35` adds retained attempt history without rewriting those
+checkpoints. Review it before running the revised collector against an existing
+database. See [collection reliability](collection-reliability.md) for the
+conservative HTTP policy and controlled one-day plans.
+See [monthly historical collection](monthly-collection.md) for a planning command
+that performs no database or source access, review/setup steps, and resume rules.
+
 Use the API in a trusted local environment. It has no authentication, including
 on ingestion and reclassification routes. `/health` confirms application
 liveness but does not verify the database or migrations.

@@ -19,6 +19,8 @@ from orbital_signal.db_models import (
 
 EXPECTED_TABLES = {
     "awards",
+    "collection_attempts",
+    "collection_windows",
     "companies",
     "company_aliases",
     "ingestion_runs",

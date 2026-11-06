@@ -1,6 +1,7 @@
 """Application services for converting source records into intelligence signals."""
 
 import hashlib
+from collections.abc import Callable
 from datetime import date
 from typing import Protocol
 
@@ -86,6 +87,7 @@ class AwardIngestionService:
         *,
         start_date: date,
         end_date: date,
+        on_progress: Callable[[IngestionResult], None] | None = None,
     ) -> IngestionResult:
         if end_date < start_date:
             raise ValueError("end_date must be on or after start_date")
@@ -103,7 +105,20 @@ class AwardIngestionService:
             )
             relevant_count = 0
             stored_count = 0
+            duplicate_count = 0
             as_of = date.today()
+
+            def report_progress() -> None:
+                if on_progress is not None:
+                    on_progress(
+                        IngestionResult(
+                            source=self._source_name,
+                            fetched_count=len(awards),
+                            relevant_count=relevant_count,
+                            stored_count=stored_count,
+                            duplicate_count=duplicate_count,
+                        )
+                    )
 
             for award in awards:
                 signal = build_company_signal(
@@ -114,19 +129,23 @@ class AwardIngestionService:
                     continue
 
                 relevant_count += 1
+                report_progress()
 
                 if await self._repository.upsert(
                     award,
                     signal,
                 ):
                     stored_count += 1
+                else:
+                    duplicate_count += 1
+                report_progress()
 
             result = IngestionResult(
                 source=self._source_name,
                 fetched_count=len(awards),
                 relevant_count=relevant_count,
                 stored_count=stored_count,
-                duplicate_count=(relevant_count - stored_count),
+                duplicate_count=duplicate_count,
             )
 
             await self._repository.finish_ingestion(
