@@ -1894,3 +1894,62 @@ dialog h2 {
     scroll-behavior:auto!important
   }
 }
+
+.monthly-panel {
+  margin-bottom:24px;
+  overflow:hidden;
+  min-width:0
+}
+
+.monthly-controls {
+  display:grid;
+  gap:18px;
+  padding:24px
+}
+
+.monthly-controls .date-fields {
+  max-width:520px;
+  margin:0
+}
+
+.monthly-controls .candidate-filter {
+  white-space:normal
+}
+
+.monthly-controls select {
+  min-width:0;
+  width:100%;
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:4px;
+  background:var(--paper);
+  color:inherit
+}
+
+.monthly-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px
+}
+
+#monthly-status {
+  margin:0;
+  padding:0 24px 18px
+}
+
+#monthly-progress > .subtext,.monthly-summary .subtext {
+  padding:0 24px 18px
+}
+
+.monthly-summary h3 {
+  padding:0 24px
+}
+
+#monthly-progress .table-wrap {
+  width:100%;
+  overflow-x:auto
+}
+
+#monthly-progress table {
+  min-width:1000px
+}

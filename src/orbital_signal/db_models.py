@@ -366,3 +366,109 @@ class IngestionRun(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
+
+class CollectionWindow(Base):
+    """Durable latest-attempt checkpoint for a monthly agency search window."""
+
+    __tablename__ = "collection_windows"
+    __table_args__ = (
+        UniqueConstraint("source", "agency", "start_date", "end_date"),
+        CheckConstraint("end_date >= start_date", name="dates_ordered"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'incomplete', 'split')",
+            name="status_valid",
+        ),
+        CheckConstraint(
+            "attempts >= 0 AND pages_fetched >= 0 AND fetched_count >= 0 "
+            "AND relevant_count >= 0 AND stored_count >= 0 AND duplicate_count >= 0",
+            name="counts_nonnegative",
+        ),
+        Index("ix_collection_windows_month_start", "month_start"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(64), nullable=False)
+    agency: Mapped[str] = mapped_column(String(500), nullable=False)
+    month_start: Mapped[date] = mapped_column(Date, nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default="pending"
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    pages_fetched: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    fetched_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    relevant_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    stored_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    duplicate_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    has_more: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CollectionAttempt(Base):
+    """Retained checkpoint counters for each numbered collection attempt."""
+
+    __tablename__ = "collection_attempts"
+    __table_args__ = (
+        UniqueConstraint("window_id", "attempt_number"),
+        CheckConstraint(
+            "status IN ('pending', 'running', 'completed', 'failed', 'incomplete', 'split')",
+            name="status_valid",
+        ),
+        CheckConstraint(
+            "attempt_number >= 1 AND pages_fetched >= 0 AND fetched_count >= 0 "
+            "AND relevant_count >= 0 AND stored_count >= 0 AND duplicate_count >= 0",
+            name="counts_nonnegative",
+        ),
+        CheckConstraint("origin IN ('recorded', 'legacy_snapshot')", name="origin_valid"),
+        CheckConstraint(
+            "completed_at IS NULL OR started_at IS NULL OR completed_at >= started_at",
+            name="timestamps_ordered",
+        ),
+        CheckConstraint("status != 'running' OR completed_at IS NULL", name="running_unfinished"),
+    )
+
+    id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    window_id: Mapped[str] = mapped_column(
+        ForeignKey("collection_windows.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    pages_fetched: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    fetched_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    relevant_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    stored_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    duplicate_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    has_more: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    origin: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="recorded", server_default="recorded"
+    )
+    counts_complete: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
