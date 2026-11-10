@@ -20,6 +20,7 @@ from orbital_signal.sources.usaspending import (
 
 MONTHLY_PATH = "/api/v1/collections/monthly"
 JANUARY_PARAMS = {"start_month": "2026-01", "end_month": "2026-01", "window_days": "31"}
+pytestmark = pytest.mark.usefixtures("api_writes_enabled")
 
 
 @pytest.fixture(autouse=True)

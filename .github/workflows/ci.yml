@@ -1,0 +1,43 @@
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Lint and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Install Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff formatting
+        run: uv run ruff format --check .
+
+      - name: JavaScript syntax
+        run: node --check src/orbital_signal/static/app.js
+
+      - name: Run tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          ORBITAL_SIGNAL_API_WRITES_ENABLED: "false"
+        run: uv run pytest -p pytest_asyncio.plugin -q

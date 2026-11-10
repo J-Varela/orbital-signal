@@ -3,6 +3,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const state = {
+    apiWritesEnabled: false,
     view: "signals", signals: [], companies: [], runs: [],
     loaded: { signals: false, companies: false },
     errors: { signals: null, companies: null },
@@ -87,7 +88,14 @@
     const hasErrors = Object.values(state.errors).some(Boolean);
     connection.classList.toggle("error", hasErrors);
     connection.classList.toggle("connected", !hasErrors && !state.pending);
-    $("connection-text").textContent = state.pending ? "Refreshing workspace" : hasErrors ? "Some data unavailable" : "Local workspace";
+    let status = state.apiWritesEnabled
+      ? "Writes enabled"
+      : "Read-only workspace";
+
+    if (hasErrors) status = "Some data unavailable";
+    if (state.pending) status = "Refreshing workspace";
+
+    $("connection-text").textContent = status;
     $("refresh-button").disabled = state.pending > 0;
   }
 
@@ -347,7 +355,17 @@
       const narrowedServer = $("candidate-filter").checked || Number($("priority-filter").value) > 0 || Number($("relevance-filter").value) > 4;
       content.replaceChildren(hasData || narrowedServer
         ? empty("No matches for these filters", "Try a broader search or reset your filters. Missing results can also reflect a gap in source coverage.", "Reset filters", resetFilters)
-        : empty(isCompanies ? "Your company directory starts here" : "Your next signal starts with evidence", "Collect a window of NASA and Department of Defense awards to build a source-linked view of space company activity.", "Collect awards", openImport));
+        : state.apiWritesEnabled
+        ? empty(
+            "No intelligence yet",
+            "Collect public award evidence to populate this workspace.",
+            "Collect awards",
+            openImport
+          )
+        : empty(
+            "No intelligence available",
+            "No intelligence records have been published yet."
+          ));
       return;
     }
     content.replaceChildren(isCompanies ? renderCompanies(items) : renderSignals(items));
@@ -400,8 +418,45 @@
     content.replaceChildren(history);
   }
 
+  async function loadCapabilities() {
+    let enabled = false;
+
+    try {
+      const response = await fetch("/api/v1/capabilities");
+
+      if (response.ok) {
+        const capabilities = await response.json();
+        enabled = capabilities.api_writes_enabled === true;
+      }
+    } catch {
+      // Remain read-only if capabilities cannot be loaded.
+    }
+
+    state.apiWritesEnabled = enabled;
+    updateConnection();
+
+    document.querySelector('[data-view="coverage"]').hidden =
+      !enabled;
+
+    $("open-import").hidden = !enabled;
+
+    setView(location.hash.slice(1));
+    renderBrowse();
+  }
+
   function setView(value) {
-    state.view = Object.hasOwn(titles, value) ? value : "signals";
+    const requested = Object.hasOwn(titles, value)
+      ? value
+      : "signals";
+
+    const restricted =
+      requested === "coverage" && !state.apiWritesEnabled;
+
+    state.view = restricted ? "signals" : requested;
+
+    if (restricted && location.hash === "#coverage") {
+      history.replaceState(null, "", "#signals");
+    }
     const [label, title, description] = titles[state.view];
     document.querySelectorAll("[data-view]").forEach((link) => {
       if (link.dataset.view === state.view) link.setAttribute("aria-current", "page");
@@ -561,4 +616,5 @@
   renderCoverage();
   updateMetrics();
   refreshData();
+  loadCapabilities();
 })();
