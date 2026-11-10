@@ -51,6 +51,7 @@ def test_signals_start_empty() -> None:
     assert response.json() == []
 
 
+@pytest.mark.usefixtures("api_writes_enabled")
 def test_ingestion_rejects_reversed_date_range() -> None:
     client = TestClient(create_app(repository=InMemorySignalRepository()))
 
@@ -111,6 +112,7 @@ def test_companies_accept_profile_filters() -> None:
     assert response.json() == []
 
 
+@pytest.mark.usefixtures("api_writes_enabled")
 def test_reclassification_endpoint_recomputes_stored_signals() -> None:
     repository = InMemorySignalRepository()
     client = TestClient(create_app(repository=repository))
@@ -128,6 +130,7 @@ def test_reclassification_endpoint_recomputes_stored_signals() -> None:
     }
 
 
+@pytest.mark.usefixtures("api_writes_enabled")
 @pytest.mark.parametrize(
     "error",
     [SourceDataError("invalid upstream payload"), httpx.ReadTimeout("timed out")],
@@ -147,6 +150,7 @@ def test_ingestion_reports_upstream_failures_as_bad_gateway(monkeypatch, error) 
     assert response.json() == {"detail": "USAspending request failed"}
 
 
+@pytest.mark.usefixtures("api_writes_enabled")
 async def test_reclassification_endpoint_updates_candidate_feed(
     satellite_award: AwardRecord,
 ) -> None:

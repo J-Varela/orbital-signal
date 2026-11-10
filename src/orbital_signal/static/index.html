@@ -23,7 +23,7 @@
       <nav class="main-nav" aria-label="Main navigation">
         <a href="#signals" data-view="signals" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span>Signals</span><span class="nav-count" id="nav-signal-count">—</span></a>
         <a href="#companies" data-view="companies"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5h10v16M14 10h6v11M2 21h20M8 9h2M8 13h2M8 17h2M17 14h1M17 17h1"/></svg><span>Companies</span><span class="nav-count" id="nav-company-count">—</span></a>
-        <a href="#coverage" data-view="coverage"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></svg><span>Collection</span></a>
+        <a href="#coverage" data-view="coverage" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M10 15v6"/></svg><span>Collection</span></a>
       </nav>
       <div class="sidebar-bottom"><span class="source-mark">PUBLIC EVIDENCE</span><p>Federal awards.<br>Explainable signals.</p><span class="sidebar-source">USAspending · NASA + DoD</span></div>
     </aside>
@@ -31,7 +31,7 @@
     <div class="workspace">
       <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="breadcrumb-current">Signals</strong></div><span class="connection" id="connection-status" role="status"><span class="status-dot"></span><span id="connection-text">Connecting</span></span></header>
       <main id="main" tabindex="-1">
-        <div class="page-heading"><div><p class="eyebrow">SPACE COMPANY INTELLIGENCE</p><h1 id="page-title">Follow the signal.</h1><p class="page-description" id="page-description">Discover relevant activity. Trace every signal to its source.</p></div><div class="heading-actions"><button class="button button-secondary icon-button" type="button" id="refresh-button" aria-label="Refresh workspace data" title="Refresh data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8a8 8 0 1 0 0 8M20 3v5h-5"/></svg></button><button class="button button-primary" id="open-import" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 16v5h16v-5"/></svg>Collect awards</button></div></div>
+        <div class="page-heading"><div><p class="eyebrow">SPACE COMPANY INTELLIGENCE</p><h1 id="page-title">Follow the signal.</h1><p class="page-description" id="page-description">Discover relevant activity. Trace every signal to its source.</p></div><div class="heading-actions"><button class="button button-secondary icon-button" type="button" id="refresh-button" aria-label="Refresh workspace data" title="Refresh data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8a8 8 0 1 0 0 8M20 3v5h-5"/></svg></button><button class="button button-primary" id="open-import" type="button" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 16v5h16v-5"/></svg>Collect awards</button></div></div>
         <div id="workspace-notice" class="notice" role="status" aria-live="polite" hidden></div>
 
         <section class="metrics" aria-label="Loaded workspace overview">
@@ -69,7 +69,7 @@
           </section>
           <section class="panel"><div class="section-heading"><div><h2>Session collection activity</h2><span class="results-note" id="history-note">Requests since this page opened</span></div><span class="label-tag">NASA + DEPARTMENT OF DEFENSE</span></div><div id="coverage-content" aria-live="polite" aria-busy="true"></div><div class="panel-footnote">Activity here resets when this page is reloaded. Stored awards remain in the company and signal feeds. Completion does not guarantee full source coverage; failed requests may retain partial results.</div></section>
         </section>
-        <footer class="workspace-footer"><span><span class="tiny-orbit" aria-hidden="true">◉</span> Evidence first. Context always.</span><span>Local workspace · Government award intelligence</span></footer>
+        <footer class="workspace-footer"><span><span class="tiny-orbit" aria-hidden="true">◉</span> Evidence first. Context always.</span><span>Government award intelligence · Source-linked evidence</span></footer>
       </main>
     </div>
 

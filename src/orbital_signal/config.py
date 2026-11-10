@@ -33,6 +33,7 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://orbital_signal:orbital_signal@127.0.0.1:55432/orbital_signal"
     )
     database_echo: bool = False
+    api_writes_enabled: bool = False
 
     @model_validator(mode="after")
     def validate_retry_delays(self) -> "Settings":

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -82,6 +82,26 @@ def create_app(
         version=__version__,
         lifespan=lifespan,
     )
+
+    @application.middleware("http")
+    async def enforce_read_only_api(
+        request: Request,
+        call_next,
+    ):
+        is_api_write = request.url.path.startswith("/api/v1/") and request.method not in {
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        }
+
+        if is_api_write and not settings.api_writes_enabled:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "API writes are disabled"},
+            )
+
+        return await call_next(request)
+
     application.state.repository = signal_repository
     application.state.settings = settings
     application.state.database_engine = engine
@@ -102,6 +122,12 @@ def create_app(
     @application.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__}
+
+    @application.get("/api/v1/capabilities")
+    async def get_capabilities() -> dict[str, bool]:
+        return {
+            "api_writes_enabled": settings.api_writes_enabled,
+        }
 
     @application.get("/api/v1/signals", response_model=list[CompanySignal])
     async def list_signals(

@@ -20,3 +20,15 @@ def satellite_award() -> AwardRecord:
         end_date=date(2027, 8, 1),
         source_url="https://www.usaspending.gov/award/CONT_AWD_FAKE-001",
     )
+
+
+@pytest.fixture(autouse=True)
+def default_read_only_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep API writes disabled by default in every test."""
+    monkeypatch.setenv("ORBITAL_SIGNAL_API_WRITES_ENABLED", "false")
+
+
+@pytest.fixture
+def api_writes_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicitly enable writes for trusted endpoint tests."""
+    monkeypatch.setenv("ORBITAL_SIGNAL_API_WRITES_ENABLED", "true")

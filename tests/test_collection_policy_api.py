@@ -36,6 +36,7 @@ class DisconnectedSource:
         raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
 
 
+@pytest.mark.usefixtures("api_writes_enabled")
 async def test_api_applies_environment_policy_and_stops_without_changing_completed_evidence(
     monkeypatch: pytest.MonkeyPatch, satellite_award: AwardRecord
 ) -> None:
