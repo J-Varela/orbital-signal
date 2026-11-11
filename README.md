@@ -9,6 +9,32 @@ Runtime version: `0.1.0-alpha.2` (package version `0.1.0a2`). This documentation
 covers current development beyond the tagged Alpha 2 release; see
 [Unreleased changes](CHANGELOG.md#unreleased).
 
+## Live Beta
+
+**[Explore Orbital Signal](https://orbital-signal-production.up.railway.app)**
+
+Orbital Signal is a public, read-only technology intelligence platform that tracks space-related activity through federal contract awards.
+
+The initial beta contains **499 intelligence signals from 146 companies**, derived from NASA and Department of Defense award evidence.
+
+### What is a signal?
+
+A signal is a source-linked government award that matches our space-technology relevance criteria. Each signal includes:
+
+- **Company:** The organization receiving the award.
+- **Evidence:** The award description, identifier, and public source.
+- **Relevance:** How strongly the award matches space-related criteria.
+- **Priority:** A heuristic score ranking signals for further investigation.
+- **Explanation:** The reasons behind the assigned scores.
+
+### Technology
+
+Built with Python, FastAPI, PostgreSQL, SQLAlchemy, Alembic, Docker, and GitHub Actions. Hosted on Railway.
+
+The public beta supports company discovery, intelligence feeds, filtering, and evidence inspection. Administrative write operations are disabled.
+
+**Limitations:** Scores are heuristic, startup-candidate classifications are not independently verified, and award amounts are not company revenue. The dataset is a partial snapshot of public awards, not a comprehensive record of federal spending.
+
 ## What it does today
 
 ```text
@@ -30,8 +56,8 @@ USAspending NASA and DoD prime contracts
 - Reclassifies persisted evidence using current rules without another source
   fetch, preserving evidence for later reconsideration.
 - Records ingestion outcomes and retries selected transient upstream failures.
-- Serves a local dashboard at `/` with live signal and company feeds, filters,
-  source evidence, collection controls, and ranking refreshes.
+- Serves a dashboard at `/` with live signal and company feeds, filters, and
+  source evidence. Administrative collection controls are hidden in read-only mode.
 - Supports explicit monthly historical collection, resumable checkpoints, and
   date subdivision when source windows reach the page limit.
 
@@ -60,8 +86,7 @@ For another database, set `ORBITAL_SIGNAL_DATABASE_URL` to an async SQLAlchemy
 PostgreSQL URL such as `postgresql+asyncpg://user:password@host:5432/database`.
 
 The dashboard is at [`/`](http://127.0.0.1:8000/); interactive API documentation
-remains at [`/docs`](http://127.0.0.1:8000/docs). This is a local, trusted API with no
-authentication. Ingestion and reclassification routes mutate stored data.
+remains at [`/docs`](http://127.0.0.1:8000/docs). API writes are disabled by default. The public beta is read-only because administrative endpoints do not yet require authentication. Only enable writes in a trusted, isolated development environment using ORBITAL_SIGNAL_API_WRITES_ENABLED=true.
 
 The dashboard fetches `/api/v1/companies` and `/api/v1/signals` from the same
 server, with up to 500 results per feed. Company details show matching signals
@@ -85,6 +110,8 @@ availability.
 ## Ingest and query
 
 With the API running:
+
+The following POST examples require API writes to be explicitly enabled in a trusted local environment. They return HTTP 403 in the public beta.
 
 ```bash
 curl --fail-with-body -s -X POST \
@@ -115,6 +142,7 @@ removing a derived signal preserves the underlying award evidence.
 
 | Method | Route | Purpose |
 | --- | --- | --- |
+| `GET` | `/api/v1/capabilities` | Report whether API writes are enabled |
 | `GET` | `/` | Local intelligence dashboard |
 | `GET` | `/health` | Application liveness and version |
 | `POST` | `/api/v1/ingestions/usaspending` | Ingest awards for a required date range |
